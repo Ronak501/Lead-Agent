@@ -115,6 +115,62 @@ def verify_google_credential(credential_token: str, db: Session) -> dict:
         )
 
 
+def verify_ornitech_email_login(email: str, name: Optional[str], db: Session) -> dict:
+    """
+    Direct login strictly requiring an @ornitech.in corporate email address.
+    """
+    email_clean = (email or "").strip().lower()
+    allowed_domain = settings.ALLOWED_OAUTH_DOMAIN.strip().lower()
+
+    if not email_clean.endswith(f"@{allowed_domain}"):
+        logger.warning(f"Rejected sign-in attempt for non-company email: {email_clean}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Access Denied: Only @{allowed_domain} company accounts are authorized.",
+        )
+
+    user = db.query(User).filter_by(email=email_clean).first()
+    if not user:
+        user = User(
+            id=gen_uuid(),
+            email=email_clean,
+            full_name=name or email_clean.split("@")[0].capitalize(),
+            is_active=True,
+        )
+        db.add(user)
+        db.flush()
+
+        ws = db.query(Workspace).filter_by(id=settings.DEFAULT_WORKSPACE_ID).first() or db.query(Workspace).first()
+        if ws:
+            member = WorkspaceMember(
+                workspace_id=ws.id,
+                user_id=user.id,
+                role="admin" if ("founder" in email_clean or "admin" in email_clean) else "member",
+            )
+            db.add(member)
+        db.commit()
+
+    payload = {
+        "sub": user.id,
+        "email": user.email,
+        "full_name": user.full_name,
+        "exp": datetime.now(timezone.utc) + timedelta(days=7),
+        "domain": allowed_domain,
+    }
+    token = jwt.encode(payload, settings.JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "full_name": user.full_name,
+            "domain": allowed_domain,
+        },
+    }
+
+
 def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Security(security),
     db: Session = Depends(get_db),
