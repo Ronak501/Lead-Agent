@@ -79,6 +79,26 @@ app.add_middleware(
 app.include_router(router)
 
 
+@app.get("/")
+def root():
+    """Root endpoint welcoming users and directing to API documentation and health check."""
+    return {
+        "app": "LeadPilot AI API",
+        "status": "online",
+        "organization": "Ornitech Solutions (@ornitech.in)",
+        "version": "1.0.0",
+        "documentation": "/docs",
+        "health_check": "/health",
+        "endpoints": {
+            "campaigns": "/api/campaigns",
+            "leads": "/api/leads",
+            "drafts": "/api/drafts",
+            "automation_status": "/api/automation/status",
+            "automation_run_cycle": "/api/automation/run-cycle",
+        },
+    }
+
+
 @app.get("/health", response_model=ApiStatus)
 async def health():
     return ApiStatus(
