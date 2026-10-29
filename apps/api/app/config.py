@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     IMAP_SERVER: str = "imap.gmail.com"
     IMAP_USER: str = ""
     IMAP_PASS: str = ""
-    AUTOPILOT_AUTO_RUN: bool = False
+    AUTOPILOT_AUTO_RUN: bool = True
     AUTOPILOT_INTERVAL_MINUTES: int = 15
 
 

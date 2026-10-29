@@ -26,7 +26,7 @@ class CompanyDiscoveryProvider:
     """Discovers real companies, verifiable domains, and public business evidence."""
 
     def __init__(self, apollo_key: str | None = None):
-        self.apollo_key = apollo_key or settings.APOLLO_API_KEY
+        self.apollo_key = apollo_key if apollo_key is not None else settings.APOLLO_API_KEY
 
     async def search(
         self,

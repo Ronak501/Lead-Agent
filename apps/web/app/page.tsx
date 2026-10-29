@@ -289,6 +289,8 @@ export default function Home() {
       setIsAuthLoading(false);
     }
     void fetchData();
+    const timer = setInterval(() => { void fetchData(); }, 30000);
+    return () => clearInterval(timer);
   }, []);
 
   const handleSignOut = () => {

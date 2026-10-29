@@ -17,20 +17,29 @@ logger = logging.getLogger("leadpilot.main")
 async def periodic_automation_loop():
     """Runs autonomous lead discovery, outbound sending, and reply checking periodically."""
     logger.info(f"Autonomous worker started (Interval: {settings.AUTOPILOT_INTERVAL_MINUTES} minutes)")
+    
+    # Run initial cycle after brief startup grace period (5s)
+    await asyncio.sleep(5)
+    
     while True:
         try:
-            await asyncio.sleep(settings.AUTOPILOT_INTERVAL_MINUTES * 60)
             if settings.AUTOPILOT_AUTO_RUN:
-                logger.info("Triggering scheduled autonomous cycle...")
+                logger.info("⚡ Executing autonomous lead discovery, outreach & reply check cycle...")
                 db = SessionLocal()
                 try:
-                    await AutomationEngine.run_full_cycle(db)
+                    res = await AutomationEngine.run_full_cycle(db)
+                    logger.info(f"Autonomous cycle finished: {res}")
                 finally:
                     db.close()
+            
+            # Wait for next scheduled interval
+            await asyncio.sleep(settings.AUTOPILOT_INTERVAL_MINUTES * 60)
         except asyncio.CancelledError:
+            logger.info("Autonomous worker shutting down.")
             break
         except Exception as e:
             logger.error(f"Error in background automation worker: {str(e)}")
+            await asyncio.sleep(60)  # Wait 1 minute before retrying on failure
 
 
 @asynccontextmanager
