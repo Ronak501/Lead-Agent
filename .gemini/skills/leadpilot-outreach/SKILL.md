@@ -35,3 +35,4 @@ This skill governs the autonomous cold email prospecting, safety checks, deliver
 ### 4. Access Control
 - Strictly enforces `@ornitech.in` Google Workspace authentication.
 - Any foreign domain is rejected with HTTP 403 Forbidden.
+

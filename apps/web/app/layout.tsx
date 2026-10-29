@@ -1,6 +1,7 @@
 import './globals.css';
 import type { Metadata } from 'next';
 import Script from 'next/script';
+import { AppProvider } from '../context/AppContext';
 
 export const metadata: Metadata = { 
   title: 'LeadPilot AI | Ornitech Solutions', 
@@ -13,7 +14,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <head>
         <Script src="https://accounts.google.com/gsi/client" strategy="beforeInteractive" />
       </head>
-      <body>{children}</body>
+      <body>
+        <AppProvider>{children}</AppProvider>
+      </body>
     </html>
   ); 
 }
