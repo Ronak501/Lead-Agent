@@ -1,0 +1,96 @@
+import asyncio
+import logging
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from .config import settings
+from .database import engine, Base, SessionLocal
+from .routes import router
+from .schemas import ApiStatus
+from .seed import seed_database
+from .automation_service import AutomationEngine
+
+logger = logging.getLogger("leadpilot.main")
+
+
+async def periodic_automation_loop():
+    """Runs autonomous lead discovery, outbound sending, and reply checking periodically."""
+    logger.info(f"Autonomous worker started (Interval: {settings.AUTOPILOT_INTERVAL_MINUTES} minutes)")
+    while True:
+        try:
+            await asyncio.sleep(settings.AUTOPILOT_INTERVAL_MINUTES * 60)
+            if settings.AUTOPILOT_AUTO_RUN:
+                logger.info("Triggering scheduled autonomous cycle...")
+                db = SessionLocal()
+                try:
+                    await AutomationEngine.run_full_cycle(db)
+                finally:
+                    db.close()
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error(f"Error in background automation worker: {str(e)}")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Auto-create tables on startup
+    Base.metadata.create_all(bind=engine)
+    # Seed default workspace and sample verified data if empty
+    db = SessionLocal()
+    try:
+        seed_database(db)
+    finally:
+        db.close()
+
+    # Start autonomous worker if enabled
+    worker_task = None
+    if settings.AUTOPILOT_AUTO_RUN:
+        worker_task = asyncio.create_task(periodic_automation_loop())
+
+    yield
+
+    if worker_task:
+        worker_task.cancel()
+        try:
+            await worker_task
+        except asyncio.CancelledError:
+            pass
+
+
+app = FastAPI(
+    title="LeadPilot AI API",
+    version="1.0.0",
+    description="Human-approved AI prospecting and cold-email SaaS platform.",
+    lifespan=lifespan,
+)
+
+cors_origins = [origin.strip() for origin in settings.API_CORS_ORIGINS.split(",") if origin.strip()]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins or ["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(router)
+
+
+@app.get("/health", response_model=ApiStatus)
+async def health():
+    return ApiStatus(
+        status="ok",
+        app="LeadPilot AI API",
+        version="1.0.0",
+        environment=settings.APP_ENV,
+        database="connected",
+        email_sending_enabled=settings.EMAIL_SENDING_ENABLED,
+        notes=[
+            "Strict evidence grounding active",
+            "Human approval mandatory for outbound drafts",
+            "Suppression checks enforced at workspace level",
+        ],
+    )

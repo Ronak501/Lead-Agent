@@ -1,0 +1,86 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: leadpilot-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: leadpilot
+      POSTGRES_PASSWORD: leadpilot
+      POSTGRES_DB: leadpilot
+    ports:
+      - "5432:5432"
+    volumes:
+      - leadpilot_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U leadpilot -d leadpilot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: leadpilot-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - leadpilot_redisdata:/data
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: leadpilot-api
+    restart: unless-stopped
+    environment:
+      - APP_ENV=development
+      - DATABASE_URL=postgresql+psycopg://leadpilot:leadpilot@postgres:5432/leadpilot
+      - REDIS_URL=redis://redis:6379/0
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_MODEL=${GROQ_MODEL:-llama-3.1-8b-instant}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - APOLLO_API_KEY=${APOLLO_API_KEY:-}
+      - HUNTER_API_KEY=${HUNTER_API_KEY:-}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - EMAIL_SENDING_ENABLED=${EMAIL_SENDING_ENABLED:-false}
+      - DEFAULT_WORKSPACE_ID=ws_default_01
+      - SENDER_NAME=${SENDER_NAME:-Ronak Talaviya}
+      - SENDER_EMAIL=${SENDER_EMAIL:-founder@ornitech.in}
+      - SENDER_COMPANY=${SENDER_COMPANY:-Founder, Ornitech Solutions}
+      - SENDER_WEBSITE=${SENDER_WEBSITE:-https://ornitech.in}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./apps/api:/app
+      - /app/__pycache__
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+    container_name: leadpilot-web
+    restart: unless-stopped
+    environment:
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+      - WATCHPACK_POLLING=true
+      - CHOKIDAR_USEPOLLING=true
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    volumes:
+      - ./apps/web:/app
+      - /app/node_modules
+      - /app/.next
+
+volumes:
+  leadpilot_pgdata:
+  leadpilot_redisdata:
