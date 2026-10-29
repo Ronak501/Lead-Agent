@@ -73,17 +73,19 @@ Respond ONLY with a JSON object in this exact schema:
   "confidence": 0.92
 }}"""
 
-        # 1. Primary Strategy: Groq API (Ultra-fast LPU inference with resilient model fallback)
+        # 1. Primary Strategy: Groq API (Ultra-fast LPU inference with resilient modern model fallback)
         if self.groq_key and self.groq_key != "mock_key":
-            preferred_model = self.groq_model if self.groq_model and self.groq_model != "llama-3.3-70b-versatile" else "llama-3.1-8b-instant"
-            candidate_models = []
-            for m in [preferred_model, "llama-3.1-8b-instant", "llama3-70b-8192", "llama3-8b-8192"]:
-                if m and m not in candidate_models:
-                    candidate_models.append(m)
+            preferred_model = self.groq_model or "llama-3.3-70b-versatile"
+            candidate_models = [preferred_model, "llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+            # Deduplicate preserving order
+            unique_candidates = []
+            for m in candidate_models:
+                if m and m not in unique_candidates:
+                    unique_candidates.append(m)
 
-            for model_candidate in candidate_models:
+            for model_candidate in unique_candidates:
                 try:
-                    async with httpx.AsyncClient(timeout=10.0) as client:
+                    async with httpx.AsyncClient(timeout=8.0) as client:
                         resp = await client.post(
                             "https://api.groq.com/openai/v1/chat/completions",
                             headers={
@@ -121,10 +123,11 @@ Respond ONLY with a JSON object in this exact schema:
                             }
                         else:
                             logger.warning(
-                                f"Groq API model {model_candidate} returned HTTP {resp.status_code}: {resp.text}. Trying next candidate."
+                                f"Groq API model {model_candidate} returned HTTP {resp.status_code}: {resp.text[:100]}. Trying next candidate."
                             )
                 except Exception as e:
-                    logger.warning(f"Groq API generation with model {model_candidate} failed: {e}. Trying next candidate.")
+                    logger.warning(f"Groq API generation with model {model_candidate} failed: {e}.")
+                    break  # Break out to avoid spamming network when offline
 
         # 2. Secondary Strategy: Gemini API (if configured)
         if self.gemini_key and self.gemini_key != "mock_key":
