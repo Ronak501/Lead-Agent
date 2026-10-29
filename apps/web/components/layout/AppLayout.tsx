@@ -23,9 +23,9 @@ export function AppLayout({
 
   if (isAuthLoading) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center text-zinc-400 text-xs space-y-3">
-        <div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
-        <p>Verifying Ornitech Workspace session...</p>
+      <div className="min-h-screen bg-[#eee6d6] flex flex-col items-center justify-center text-[#443b2f] text-sm space-y-3 font-sans">
+        <div className="w-8 h-8 border-2 border-[#35422d] border-t-transparent rounded-full animate-spin" />
+        <p className="font-medium">Opening Ornitech Workspace on sand table...</p>
       </div>
     );
   }
@@ -43,26 +43,28 @@ export function AppLayout({
   }
 
   return (
-    <div className="min-h-screen bg-[#09090b] text-[#f4f4f5] flex">
+    <div className="min-h-screen bg-[#eee6d6] text-[#29251d] flex selection:bg-[#ad7d62]/30 selection:text-[#29251d] font-sans">
       {/* Toast Notification */}
       {notification && (
         <div
-          className={`fixed top-5 right-5 z-50 flex items-center gap-3 px-4 py-3 rounded-xl border shadow-2xl transition-all duration-300 ${
+          role="status"
+          aria-live="polite"
+          className={`fixed top-5 right-5 z-50 flex items-center gap-3 px-4 py-3 rounded-2xl border shadow-lg transition-all duration-300 font-sans text-sm ${
             notification.type === 'error'
-              ? 'bg-rose-950/90 border-rose-800 text-rose-200'
+              ? 'bg-[#fdf2ee] border-[#ad7d62] text-[#694737]'
               : notification.type === 'info'
-              ? 'bg-blue-950/90 border-blue-800 text-blue-200'
-              : 'bg-emerald-950/90 border-emerald-800 text-emerald-200'
+              ? 'bg-[#f5eddf] border-[#b9b28b] text-[#35422d]'
+              : 'bg-[#f2f6ee] border-[#35422d]/40 text-[#35422d]'
           }`}
         >
           {notification.type === 'error' ? (
-            <AlertCircle size={18} />
+            <AlertCircle size={18} className="shrink-0 text-[#ad7d62]" />
           ) : notification.type === 'info' ? (
-            <RefreshCw size={18} className="animate-spin" />
+            <RefreshCw size={18} className="shrink-0 text-[#694737] animate-spin" />
           ) : (
-            <CheckCircle2 size={18} />
+            <CheckCircle2 size={18} className="shrink-0 text-[#35422d]" />
           )}
-          <span className="text-sm font-medium">{notification.message}</span>
+          <span className="font-medium leading-snug">{notification.message}</span>
         </div>
       )}
 
@@ -87,4 +89,3 @@ export function AppLayout({
     </div>
   );
 }
-

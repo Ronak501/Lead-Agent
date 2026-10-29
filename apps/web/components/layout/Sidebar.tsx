@@ -40,14 +40,14 @@ export function Sidebar({ mobileMenuOpen, setMobileMenuOpen }: SidebarProps) {
       href: '/drafts',
       label: 'Outbox Drafts',
       icon: Mail,
-      badge: drafts.filter(d => d.status === 'sent').length,
+      badge: drafts.filter((d) => d.status === 'sent').length,
     },
     {
       href: '/review',
       label: 'Approval Queue',
       icon: ShieldCheck,
-      badge: drafts.filter(d => d.status === 'pending_review').length,
-      badgeColor: 'bg-violet-500/20 text-violet-300 border-violet-500/30',
+      badge: drafts.filter((d) => d.status === 'pending_review').length,
+      badgeColor: 'bg-[#694737]/15 text-[#694737] border border-[#694737]/30',
     },
     { href: '/analytics', label: 'Analytics', icon: Activity },
     { href: '/integrations', label: 'Integrations', icon: Key },
@@ -71,13 +71,13 @@ export function Sidebar({ mobileMenuOpen, setMobileMenuOpen }: SidebarProps) {
       {mobileMenuOpen && (
         <div
           onClick={() => setMobileMenuOpen(false)}
-          className="fixed inset-0 bg-black/70 backdrop-blur-sm z-30 lg:hidden transition-opacity"
+          className="fixed inset-0 bg-[#29251d]/40 backdrop-blur-xs z-30 lg:hidden transition-opacity"
         />
       )}
 
       {/* Sidebar Aside */}
       <aside
-        className={`w-64 border-r border-zinc-800/80 bg-zinc-950/95 backdrop-blur-xl flex flex-col justify-between p-4 fixed inset-y-0 left-0 z-40 transition-transform duration-300 ease-in-out lg:translate-x-0 ${
+        className={`w-64 border-r border-[#ddd5c3] bg-[#f5eddf] flex flex-col justify-between p-4 fixed inset-y-0 left-0 z-40 transition-transform duration-300 ease-in-out lg:translate-x-0 shadow-sm ${
           mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -85,12 +85,14 @@ export function Sidebar({ mobileMenuOpen, setMobileMenuOpen }: SidebarProps) {
           {/* Logo & Platform Title */}
           <div className="flex items-center justify-between px-2 pt-1">
             <Link href="/" className="flex items-center gap-2.5 group">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-violet-600 via-indigo-600 to-cyan-500 flex items-center justify-center text-white shadow-lg shadow-violet-600/30 group-hover:scale-105 transition-transform">
-                <Sparkles size={18} />
+              <div className="w-9 h-9 rounded-[14px_10px_16px_12px] bg-[#35422d] flex items-center justify-center text-[#f5eddf] shadow-sm group-hover:scale-105 transition-transform">
+                <Sparkles size={17} />
               </div>
               <div>
-                <span className="font-bold text-sm tracking-tight text-white block">LeadPilot AI</span>
-                <span className="text-[10px] text-zinc-400 font-mono tracking-wider uppercase block">
+                <span className="font-serif font-bold text-base tracking-tight text-[#29251d] block">
+                  LeadPilot AI
+                </span>
+                <span className="text-[10px] text-[#694737] font-medium tracking-wider uppercase block font-sans">
                   Ornitech Solutions
                 </span>
               </div>
@@ -98,7 +100,7 @@ export function Sidebar({ mobileMenuOpen, setMobileMenuOpen }: SidebarProps) {
 
             <button
               onClick={() => setMobileMenuOpen(false)}
-              className="lg:hidden p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-900 border border-zinc-800 transition-colors"
+              className="lg:hidden p-1.5 rounded-xl text-[#443b2f] hover:text-[#29251d] hover:bg-[#ddd5c3]/50 border border-[#ddd5c3] transition-colors"
             >
               <X size={16} />
             </button>
@@ -115,21 +117,21 @@ export function Sidebar({ mobileMenuOpen, setMobileMenuOpen }: SidebarProps) {
                   key={item.href}
                   href={item.href}
                   onClick={() => setMobileMenuOpen(false)}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all ${
+                  className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-[16px_12px_18px_14px] text-xs font-medium transition-all ${
                     isActive
-                      ? 'bg-violet-600/15 text-violet-300 border border-violet-500/30 shadow-sm'
-                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60'
+                      ? 'bg-[#35422d] text-[#f5eddf] shadow-sm'
+                      : 'text-[#443b2f] hover:bg-[#ddd5c3]/50 hover:text-[#29251d]'
                   }`}
                 >
                   <div className="flex items-center gap-2.5">
-                    <Icon size={16} className={isActive ? 'text-violet-400' : 'text-zinc-400'} />
-                    <span>{item.label}</span>
+                    <Icon size={16} className={isActive ? 'text-[#b9b28b]' : 'text-[#694737]'} />
+                    <span className="font-sans font-medium">{item.label}</span>
                   </div>
 
-                  {item.badge !== undefined && item.badge > 0 && (
+                  {typeof item.badge === 'number' && item.badge > 0 && (
                     <span
-                      className={`text-[10px] px-2 py-0.5 rounded-full font-mono border ${
-                        item.badgeColor || 'bg-zinc-800 text-zinc-300 border-zinc-700'
+                      className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                        item.badgeColor || (isActive ? 'bg-[#29251d]/40 text-[#f5eddf]' : 'bg-[#ddd5c3] text-[#29251d]')
                       }`}
                     >
                       {item.badge}
@@ -139,43 +141,41 @@ export function Sidebar({ mobileMenuOpen, setMobileMenuOpen }: SidebarProps) {
               );
             })}
           </nav>
-
-          {/* Cloud Run & Database Status Badge */}
-          <div className="p-3 rounded-xl border border-zinc-800/80 bg-zinc-900/40 space-y-1.5">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] text-zinc-400 font-medium">Cloud Engine</span>
-              <span
-                className={`text-[10px] font-mono px-2 py-0.5 rounded-full flex items-center gap-1.5 ${
-                  apiStatus === 'online'
-                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                    : 'bg-red-500/10 text-red-400 border border-red-500/20'
-                }`}
-              >
-                <span className={`h-1.5 w-1.5 rounded-full ${apiStatus === 'online' ? 'bg-emerald-400' : 'bg-red-400'}`} />
-                {apiStatus === 'online' ? 'Connected' : 'Offline'}
-              </span>
-            </div>
-            <p className="text-[10px] text-zinc-500">Neon Postgres · Cloud Run asia-south1</p>
-          </div>
         </div>
 
-        {/* Safety & Compliance Badge */}
-        <div className="p-3.5 rounded-2xl border border-zinc-800/80 bg-zinc-900/50 space-y-2">
-          <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400">
-            <ShieldCheck size={16} /> Strict Human Approval
+        {/* Bottom Utility Controls */}
+        <div className="space-y-3 pt-4 border-t border-[#ddd5c3]">
+          {/* API Health Pill */}
+          <div className="flex items-center justify-between px-2 text-xs">
+            <span className="text-[11px] text-[#443b2f] font-sans">Cloud Engine</span>
+            <span
+              className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                apiStatus === 'online'
+                  ? 'bg-[#35422d]/15 text-[#35422d] border border-[#35422d]/30'
+                  : apiStatus === 'offline'
+                  ? 'bg-[#ad7d62]/20 text-[#694737] border border-[#ad7d62]'
+                  : 'bg-[#b9b28b]/30 text-[#443b2f]'
+              }`}
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  apiStatus === 'online' ? 'bg-[#35422d]' : 'bg-[#ad7d62]'
+                }`}
+              />
+              {apiStatus}
+            </span>
           </div>
-          <p className="text-[11px] leading-relaxed text-zinc-400">
-            Outreach drafts require verification and evidence grounding before dispatch.
-          </p>
+
+          {/* Reload Demo Data */}
           <button
             onClick={handleTriggerSeed}
-            className="w-full mt-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg bg-zinc-800/80 hover:bg-zinc-800 text-zinc-300 text-xs font-medium border border-zinc-700/50 transition-colors"
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-[16px_12px_14px_18px] border border-[#ddd5c3] bg-[#eee6d6] hover:bg-[#ddd5c3]/80 text-[#29251d] text-xs font-medium transition-colors"
           >
-            <RefreshCw size={12} /> Reload Demo Data
+            <RefreshCw size={12} className="text-[#694737]" />
+            Reload Demo Data
           </button>
         </div>
       </aside>
     </>
   );
 }
-

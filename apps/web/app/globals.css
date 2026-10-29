@@ -1,7 +1,42 @@
 @import "tailwindcss";
 
+@theme {
+  --color-ground: #eee6d6;
+  --color-surface: #f5eddf;
+  --color-surface-muted: #ddd5c3;
+  --color-ink: #29251d;
+  --color-ink-muted: #443b2f;
+  --color-primary: #35422d;
+  --color-field: #694737;
+  --color-terracotta: #ad7d62;
+  --color-highlight: #b9b28b;
+  --font-serif: "Organic Source Serif", "Source Serif 4", Georgia, serif;
+  --font-sans: "Organic Instrument Sans", "Instrument Sans", -apple-system, sans-serif;
+}
+
 :root {
-  color-scheme: dark;
+  --dp-color-ground: #eee6d6;
+  --dp-color-surface: #f5eddf;
+  --dp-color-ink: #29251d;
+  --dp-color-primary: #35422d;
+  --dp-color-field: #694737;
+  --dp-color-art-accent: #ad7d62;
+  --dp-color-surface-muted: #ddd5c3;
+  --dp-color-highlight: #b9b28b;
+  --dp-color-ink-muted: #443b2f;
+  --dp-typography-display: "Organic Source Serif", "Source Serif 4", Georgia, serif;
+  --dp-typography-reading: "Organic Instrument Sans", "Instrument Sans", sans-serif;
+  --dp-typography-body: 16px;
+  --dp-typography-reading-small: 15px;
+  --dp-typography-control: 14px;
+  --dp-typography-caption: 13px;
+  --dp-typography-metadata: 12px;
+  --dp-typography-reading-leading: 1.8;
+  --dp-spacing-content-gap: 24px;
+  --dp-radius-control: 27px 19px 29px 16px / 22px 26px 19px 29px;
+  --dp-border-hairline: 1px;
+  --dp-motion-interaction: 240ms ease;
+  color-scheme: light;
 }
 
 * {
@@ -10,33 +45,74 @@
 
 body {
   margin: 0;
-  background-color: #09090b;
-  color: #f4f4f5;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background-color: #eee6d6;
+  color: #29251d;
+  font-family: var(--dp-typography-reading);
+  line-height: var(--dp-typography-reading-leading);
   -webkit-font-smoothing: antialiased;
+}
+
+/* Subtle continuous paper grain texture */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.04;
+  background-image: radial-gradient(#29251d 1px, transparent 1px);
+  background-size: 18px 18px;
+  z-index: 99;
 }
 
 /* Custom scrollbars */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #09090b;
+  background: #eee6d6;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #27272a;
+  background: #c8beab;
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3f3f46;
+  background: #ad7d62;
 }
 
-.glass-panel {
-  background: rgba(24, 24, 27, 0.7);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+.organic-display {
+  font-family: var(--dp-typography-display);
+  letter-spacing: -0.02em;
+}
+
+.organic-sheet {
+  background-color: #f5eddf;
+  border: 1px solid #ddd5c3;
+  box-shadow: 0 4px 20px -2px rgba(41, 37, 29, 0.05);
+}
+
+.organic-moss-field {
+  background-color: #35422d;
+  color: #f5eddf;
+}
+
+.organic-clay-field {
+  background-color: #694737;
+  color: #f5eddf;
+}
+
+.organic-radius {
+  border-radius: 27px 19px 29px 16px / 22px 26px 19px 29px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

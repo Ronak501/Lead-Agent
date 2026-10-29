@@ -13,66 +13,69 @@ export function CampaignsView() {
   const [discoverQuery, setDiscoverQuery] = useState('');
 
   return (
-    <div className="space-y-5 sm:space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+    <div className="space-y-6 font-sans text-[#29251d]">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-[#ddd5c3]">
         <div>
-          <h1 className="text-lg sm:text-xl font-bold text-white">Outreach Campaigns</h1>
-          <p className="text-xs text-zinc-400">Configure target markets, industry segments, and service offerings</p>
+          <h1 className="font-serif text-2xl font-normal text-[#29251d] tracking-tight">Outreach Campaigns</h1>
+          <p className="text-xs text-[#443b2f]">Configure target markets, industry segments, and service offerings</p>
         </div>
         <button
           onClick={() => setShowNewCampaignModal(true)}
-          className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold shadow-lg shadow-violet-600/30 transition-all w-full sm:w-fit"
+          className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-[27px_19px_29px_16px] bg-[#35422d] hover:bg-[#273320] text-[#f5eddf] text-xs font-semibold shadow-xs transition-all w-full sm:w-fit active:scale-[0.98]"
         >
           <Plus size={16} /> New Campaign
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {campaigns.map((c) => (
-          <div key={c.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 sm:p-5 space-y-4 hover:border-zinc-700 transition-all">
+          <div
+            key={c.id}
+            className="rounded-[26px_18px_24px_20px] border border-[#ddd5c3] bg-[#f5eddf] p-5 space-y-4 hover:border-[#ad7d62] shadow-2xs transition-all"
+          >
             <div className="flex items-start justify-between">
               <div className="space-y-1">
-                <span className="text-xs font-semibold uppercase px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800/60">
+                <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-[#35422d]/15 text-[#35422d] border border-[#35422d]/30">
                   {c.status}
                 </span>
-                <h3 className="font-semibold text-base text-white pt-1">{c.name}</h3>
+                <h3 className="font-serif font-medium text-lg text-[#29251d] pt-1">{c.name}</h3>
               </div>
-              <div className="p-2 rounded-lg bg-zinc-800 text-zinc-400">
+              <div className="p-2.5 rounded-[14px_10px_16px_12px] bg-[#eee6d6] text-[#694737]">
                 <Target size={18} />
               </div>
             </div>
 
-            <p className="text-xs text-zinc-400 leading-relaxed">
+            <p className="text-xs text-[#443b2f] leading-relaxed">
               {c.notes || 'Targeting qualified businesses with tailored website and SaaS modernization.'}
             </p>
 
             <div className="space-y-2 text-xs">
-              <div className="flex flex-wrap gap-1">
-                <span className="text-zinc-500">Markets:</span>
+              <div className="flex flex-wrap gap-1.5">
+                <span className="text-[#694737] font-medium">Markets:</span>
                 {c.target_markets.map((m, idx) => (
-                  <span key={idx} className="bg-zinc-800 text-zinc-300 px-1.5 py-0.5 rounded text-[11px]">
+                  <span key={idx} className="bg-[#eee6d6] text-[#29251d] px-2 py-0.5 rounded-md text-[11px]">
                     {m}
                   </span>
                 ))}
               </div>
-              <div className="flex flex-wrap gap-1">
-                <span className="text-zinc-500">Services:</span>
+              <div className="flex flex-wrap gap-1.5">
+                <span className="text-[#694737] font-medium">Services:</span>
                 {c.services.map((s, idx) => (
-                  <span key={idx} className="bg-violet-950/60 text-violet-300 px-1.5 py-0.5 rounded text-[11px]">
+                  <span key={idx} className="bg-[#694737]/10 text-[#694737] px-2 py-0.5 rounded-md text-[11px]">
                     {s}
                   </span>
                 ))}
               </div>
             </div>
 
-            <div className="pt-3 border-t border-zinc-800 flex items-center justify-between text-xs">
-              <span className="text-zinc-400 font-medium">{c.leads_count} Leads Discovered</span>
+            <div className="pt-3 border-t border-[#ddd5c3] flex items-center justify-between text-xs">
+              <span className="font-serif text-[#29251d] font-medium">{c.leads_count} Leads Discovered</span>
               <button
                 onClick={() => {
                   setDiscoverQuery(c.name);
                   setShowDiscoverModal(true);
                 }}
-                className="text-violet-400 hover:text-violet-300 font-semibold flex items-center gap-1"
+                className="text-[#35422d] hover:text-[#273320] font-semibold flex items-center gap-1"
               >
                 Run Discovery <ArrowRight size={14} />
               </button>
@@ -94,4 +97,3 @@ export function CampaignsView() {
     </div>
   );
 }
-

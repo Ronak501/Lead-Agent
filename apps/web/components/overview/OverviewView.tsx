@@ -43,44 +43,49 @@ export function OverviewView({ onOpenDiscoverModal, onOpenNewCampaignModal }: Ov
   const repliedCount = drafts.filter((d) => d.status === 'replied' || (d.reply_count && d.reply_count > 0)).length;
 
   return (
-    <div className="space-y-8">
-      {/* Hero Banner */}
-      <div className="rounded-2xl border border-violet-800/40 bg-gradient-to-r from-violet-950/40 via-zinc-900 to-indigo-950/30 p-5 sm:p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xl">
-        <div className="space-y-2">
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-violet-500/10 border border-violet-500/30 text-violet-300 text-xs font-semibold">
-            <Sparkles size={13} /> Evidence-Based B2B Cold Outreach
+    <div className="space-y-8 font-sans text-[#29251d]">
+      {/* Generous Split Opening (Organic Opening) */}
+      <div className="rounded-[32px_22px_36px_18px] border border-[#ddd5c3] bg-[#f5eddf] p-6 sm:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm relative overflow-hidden">
+        {/* Subtle decorative terracotta and moss organic shapes in background */}
+        <div className="absolute -top-12 -right-12 w-48 h-48 rounded-[40px_60px_35px_55px] bg-[#ad7d62]/10 pointer-events-none transform rotate-12" />
+        <div className="absolute -bottom-16 right-40 w-44 h-44 rounded-[55px_35px_60px_40px] bg-[#35422d]/8 pointer-events-none transform -rotate-6" />
+
+        <div className="space-y-3 max-w-2xl relative z-10">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#35422d]/10 border border-[#35422d]/25 text-[#35422d] text-xs font-semibold">
+            <Sparkles size={13} className="text-[#35422d]" /> Evidence-Based B2B Cold Outreach
           </div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
+          <h1 className="font-serif text-2xl sm:text-3xl md:text-4xl font-normal tracking-tight text-[#29251d] leading-tight">
             Find Real Opportunities. Verify Evidence. Approve Every Email.
           </h1>
-          <p className="text-xs sm:text-sm text-zinc-400 max-w-2xl">
-            LeadPilot AI checks real public websites for performance, mobile usability, and tech stack gaps, generating fact-grounded pitches that require your explicit approval before sending.
+          <p className="text-sm text-[#443b2f] leading-relaxed max-w-xl">
+            LeadPilot AI checks real public websites for performance, mobile usability, and tech stack gaps, assembling fact-grounded pitches that require your explicit approval before sending.
           </p>
         </div>
-        <div className="flex flex-col sm:flex-row md:flex-col gap-2 shrink-0">
+
+        <div className="flex flex-col sm:flex-row md:flex-col gap-2.5 shrink-0 relative z-10">
           <button
             onClick={handleRunAutonomousPipeline}
             disabled={loading}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-black text-xs font-bold shadow-lg shadow-emerald-500/25 transition-all disabled:opacity-50"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-[27px_19px_29px_16px] bg-[#35422d] hover:bg-[#273320] text-[#f5eddf] text-xs font-semibold shadow-sm transition-all disabled:opacity-50 active:scale-[0.98]"
           >
-            <Sparkles size={14} className="fill-black" /> Run Autonomous Engine (Discover ➔ Send ➔ Alert)
+            <Sparkles size={14} className="fill-[#b9b28b] text-[#b9b28b]" /> Run Autonomous Engine (Discover ➔ Send ➔ Alert)
           </button>
           <button
             onClick={handleBatchAutoDispatch}
             disabled={loading || unsentCount === 0}
-            className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black text-xs font-bold shadow-lg shadow-orange-500/25 transition-all disabled:opacity-50"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-[22px_26px_19px_29px] bg-[#694737] hover:bg-[#53372a] text-[#f5eddf] text-xs font-semibold shadow-sm transition-all disabled:opacity-50 active:scale-[0.98]"
           >
-            <Zap size={14} className="fill-black" /> Run Company Auto-Pilot ({unsentCount})
+            <Zap size={14} className="fill-[#ad7d62] text-[#ad7d62]" /> Run Company Auto-Pilot ({unsentCount})
           </button>
           <Link
             href="/review"
-            className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold shadow-lg shadow-violet-600/30 transition-all text-center"
+            className="flex items-center justify-center gap-2 px-4 py-2 rounded-[24px_18px_26px_16px] border border-[#35422d]/40 bg-[#eee6d6] hover:bg-[#ddd5c3] text-[#29251d] text-xs font-semibold transition-all text-center"
           >
-            <ShieldCheck size={16} /> Review Pending Drafts ({pendingReviewCount})
+            <ShieldCheck size={16} className="text-[#35422d]" /> Review Pending Drafts ({pendingReviewCount})
           </Link>
           <Link
             href="/leads"
-            className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs font-medium transition-all text-center"
+            className="flex items-center justify-center gap-2 px-4 py-2 rounded-[20px_16px_22px_14px] border border-[#ddd5c3] bg-transparent hover:bg-[#ddd5c3]/50 text-[#443b2f] text-xs font-medium transition-all text-center"
           >
             View Discovered Leads <ArrowRight size={14} />
           </Link>
@@ -90,96 +95,102 @@ export function OverviewView({ onOpenDiscoverModal, onOpenNewCampaignModal }: Ov
       {/* OVERVIEW KPI HIERARCHY */}
       <div className="space-y-4">
         {/* TIER 1: HIGH-PRIORITY OPERATIONAL ACTION CARDS */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Card 1: Pending Human Review */}
-          <div className="rounded-2xl border border-violet-800/60 bg-gradient-to-br from-violet-950/40 via-zinc-900 to-zinc-950 p-5 space-y-3 shadow-lg relative overflow-hidden group hover:border-violet-600/80 transition-all">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {/* Card 1: Fired Clay Field for Pending Sign-off */}
+          <div className="rounded-[28px_20px_30px_18px] bg-[#694737] text-[#f5eddf] p-6 space-y-3.5 shadow-sm relative overflow-hidden group">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="p-2 rounded-xl bg-violet-600/20 text-violet-300 border border-violet-500/30">
+                <span className="p-2 rounded-xl bg-[#f5eddf]/15 text-[#f5eddf]">
                   <Mail size={18} />
                 </span>
-                <span className="text-xs font-semibold uppercase tracking-wider text-violet-300">Action Required</span>
+                <span className="text-xs font-semibold uppercase tracking-wider text-[#ad7d62]">Action Required</span>
               </div>
-              <span className="h-2.5 w-2.5 rounded-full bg-violet-400 animate-pulse" />
+              <span className="h-2.5 w-2.5 rounded-full bg-[#ad7d62] animate-pulse" />
             </div>
             <div>
-              <div className="text-3xl font-extrabold text-white tracking-tight">{pendingReviewCount}</div>
-              <div className="text-xs font-medium text-zinc-300 mt-0.5">Pending Sign-off Queue</div>
-              <p className="text-[11px] text-zinc-400 mt-1">
+              <div className="font-serif text-4xl font-normal tracking-tight text-[#f5eddf]">
+                {pendingReviewCount}
+              </div>
+              <div className="text-sm font-medium text-[#f5eddf]/90 mt-1 font-serif">Pending Sign-off Queue</div>
+              <p className="text-xs text-[#f5eddf]/75 mt-1 leading-relaxed">
                 Individual human approval required before cold emails can dispatch.
               </p>
             </div>
             <div className="pt-2">
               <Link
                 href="/review"
-                className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold shadow-md shadow-violet-600/20 transition-all text-center"
+                className="w-full flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-[27px_19px_29px_16px] bg-[#f5eddf] hover:bg-[#eee6d6] text-[#29251d] text-xs font-semibold shadow-xs transition-all text-center"
               >
-                <ShieldCheck size={14} /> Review Approval Queue ({pendingReviewCount})
+                <ShieldCheck size={14} className="text-[#694737]" /> Review Approval Queue ({pendingReviewCount})
               </Link>
             </div>
           </div>
 
-          {/* Card 2: Approved Outbox */}
-          <div className="rounded-2xl border border-emerald-800/50 bg-gradient-to-br from-emerald-950/30 via-zinc-900 to-zinc-950 p-5 space-y-3 shadow-lg relative overflow-hidden group hover:border-emerald-600/70 transition-all">
+          {/* Card 2: Continuous Moss Basin for Ready to Send Outbox */}
+          <div className="rounded-[24px_30px_18px_26px] bg-[#35422d] text-[#f5eddf] p-6 space-y-3.5 shadow-sm relative overflow-hidden group">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="p-2 rounded-xl bg-emerald-600/20 text-emerald-300 border border-emerald-500/30">
+                <span className="p-2 rounded-xl bg-[#f5eddf]/15 text-[#f5eddf]">
                   <ShieldCheck size={18} />
                 </span>
-                <span className="text-xs font-semibold uppercase tracking-wider text-emerald-300">Ready to Send</span>
+                <span className="text-xs font-semibold uppercase tracking-wider text-[#b9b28b]">Ready to Send</span>
               </div>
-              <span className="text-[11px] font-mono text-emerald-400 font-semibold">SHA-256</span>
+              <span className="text-xs font-mono text-[#b9b28b] font-semibold">SHA-256</span>
             </div>
             <div>
-              <div className="text-3xl font-extrabold text-white tracking-tight">{approvedCount}</div>
-              <div className="text-xs font-medium text-zinc-300 mt-0.5">Approved & Armed Outbox</div>
-              <p className="text-[11px] text-zinc-400 mt-1">
+              <div className="font-serif text-4xl font-normal tracking-tight text-[#f5eddf]">
+                {approvedCount}
+              </div>
+              <div className="text-sm font-medium text-[#f5eddf]/90 mt-1 font-serif">Approved & Armed Outbox</div>
+              <p className="text-xs text-[#f5eddf]/75 mt-1 leading-relaxed">
                 Cryptographically locked drafts verified against suppression blocklists.
               </p>
             </div>
             <div className="pt-2">
               <Link
                 href="/drafts"
-                className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-semibold shadow-md shadow-emerald-700/20 transition-all text-center"
+                className="w-full flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-[27px_19px_29px_16px] bg-[#f5eddf] hover:bg-[#eee6d6] text-[#29251d] text-xs font-semibold shadow-xs transition-all text-center"
               >
-                <Send size={13} /> View Outbox Drafts ({approvedCount})
+                <Send size={13} className="text-[#35422d]" /> View Outbox Drafts ({approvedCount})
               </Link>
             </div>
           </div>
 
-          {/* Card 3: Verified Contacts Pipeline */}
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5 space-y-3 shadow-lg hover:border-zinc-700 transition-all">
+          {/* Card 3: Raised Paper Sheet for Quality Leads */}
+          <div className="rounded-[22px_26px_28px_18px] border border-[#ddd5c3] bg-[#f5eddf] p-6 space-y-3.5 shadow-sm">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <span className="p-2 rounded-xl bg-zinc-800 text-zinc-300">
-                  <CheckCircle2 size={18} className="text-blue-400" />
+                <span className="p-2 rounded-xl bg-[#eee6d6] text-[#35422d]">
+                  <CheckCircle2 size={18} className="text-[#35422d]" />
                 </span>
-                <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Prospect Quality</span>
+                <span className="text-xs font-semibold uppercase tracking-wider text-[#694737]">Prospect Quality</span>
               </div>
-              <span className="text-[11px] text-zinc-500">
+              <span className="text-xs text-[#694737] font-medium">
                 {leads.length > 0 ? Math.round((verifiedContactsCount / leads.length) * 100) : 0}% Validated
               </span>
             </div>
             <div>
-              <div className="text-3xl font-extrabold text-white tracking-tight">{verifiedContactsCount}</div>
-              <div className="text-xs font-medium text-zinc-300 mt-0.5">Verified Contacts</div>
-              <p className="text-[11px] text-zinc-400 mt-1">
+              <div className="font-serif text-4xl font-normal tracking-tight text-[#29251d]">
+                {verifiedContactsCount}
+              </div>
+              <div className="text-sm font-medium text-[#29251d] mt-1 font-serif">Verified Contacts</div>
+              <p className="text-xs text-[#443b2f] mt-1 leading-relaxed">
                 RFC & MX checked decision-makers ready for evidence-based outreach.
               </p>
             </div>
             <div className="pt-2">
               <Link
                 href="/leads"
-                className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border border-zinc-700 bg-zinc-800 hover:bg-zinc-750 text-zinc-200 text-xs font-medium transition-colors text-center"
+                className="w-full flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-[27px_19px_29px_16px] border border-[#ddd5c3] bg-[#eee6d6] hover:bg-[#ddd5c3] text-[#29251d] text-xs font-medium transition-colors text-center"
               >
-                <Users size={14} /> Explore Leads ({leads.length})
+                <Users size={14} className="text-[#694737]" /> Explore Leads ({leads.length})
               </Link>
             </div>
           </div>
         </div>
 
-        {/* TIER 2: SECONDARY PIPELINE PULSE & HISTORICAL COUNTERS */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {/* TIER 2: PALE FACTS TRAY */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
           {[
             { label: 'Active Campaigns', value: campaigns.length, icon: Target, detail: 'India & Global targets' },
             { label: 'Dispatched Emails', value: dispatchedCount, icon: Send, detail: 'Dispatched safely via outbox' },
@@ -190,44 +201,44 @@ export function OverviewView({ onOpenDiscoverModal, onOpenNewCampaignModal }: Ov
             return (
               <div
                 key={idx}
-                className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3.5 space-y-1.5 hover:border-zinc-700/80 transition-all"
+                className="rounded-[20px_16px_22px_14px] border border-[#ddd5c3] bg-[#f5eddf] p-4 space-y-1.5 shadow-2xs hover:border-[#ad7d62]/60 transition-all"
               >
-                <div className="flex items-center justify-between text-zinc-400 text-xs">
-                  <span className="truncate pr-1 text-[11px] font-medium">{stat.label}</span>
-                  <Icon size={14} className="text-zinc-500 shrink-0" />
+                <div className="flex items-center justify-between text-[#694737] text-xs">
+                  <span className="truncate pr-1 text-[11px] font-medium font-sans uppercase tracking-wider">{stat.label}</span>
+                  <Icon size={14} className="text-[#ad7d62] shrink-0" />
                 </div>
-                <div className="text-xl sm:text-2xl font-bold text-white">{stat.value}</div>
-                <div className="text-[10px] text-zinc-500 truncate">{stat.detail}</div>
+                <div className="font-serif text-2xl sm:text-3xl font-normal text-[#29251d]">{stat.value}</div>
+                <div className="text-[11px] text-[#443b2f] truncate">{stat.detail}</div>
               </div>
             );
           })}
         </div>
       </div>
 
-      {/* Live Outreach Funnel */}
-      <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-4 sm:p-6 space-y-4">
+      {/* Live Outreach Funnel in Pale Paper Sheet */}
+      <div className="rounded-[28px_20px_30px_18px] border border-[#ddd5c3] bg-[#f5eddf] p-5 sm:p-7 space-y-5 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
-            <h2 className="text-sm sm:text-base font-semibold text-white">Evidence-Based Prospecting Funnel</h2>
-            <p className="text-xs text-zinc-500">Pipeline progression from discovery to human-approved delivery & prospect responses</p>
+            <h2 className="font-serif text-lg sm:text-xl font-medium text-[#29251d]">Evidence-Based Prospecting Funnel</h2>
+            <p className="text-xs text-[#443b2f]">Pipeline progression from discovery to human-approved delivery & prospect responses</p>
           </div>
-          <span className="text-[11px] sm:text-xs font-semibold px-2.5 py-1 rounded-full bg-violet-950 border border-violet-800 text-violet-300 w-fit">
+          <span className="text-[11px] sm:text-xs font-semibold px-3 py-1 rounded-full bg-[#35422d]/10 border border-[#35422d]/25 text-[#35422d] w-fit">
             100% Evidence Grounded
           </span>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5 sm:gap-3 pt-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 pt-1">
           {[
-            { step: '1. Sourced', count: leads.length, color: 'bg-blue-500/20 text-blue-300 border-blue-500/30' },
-            { step: '2. Audited', count: leads.filter((l) => l.audit).length, color: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30' },
-            { step: '3. Drafted', count: drafts.length, color: 'bg-purple-500/20 text-purple-300 border-purple-500/30' },
-            { step: '4. Approved', count: approvedCount, color: 'bg-amber-500/20 text-amber-300 border-amber-500/30' },
-            { step: '5. Dispatched', count: dispatchedCount, color: 'bg-teal-500/20 text-teal-300 border-teal-500/30' },
-            { step: '6. Replied', count: repliedCount, color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' },
+            { step: '1. Sourced', count: leads.length, color: 'bg-[#eee6d6] text-[#29251d] border-[#ddd5c3]' },
+            { step: '2. Audited', count: leads.filter((l) => l.audit).length, color: 'bg-[#eee6d6] text-[#29251d] border-[#ddd5c3]' },
+            { step: '3. Drafted', count: drafts.length, color: 'bg-[#eee6d6] text-[#29251d] border-[#ddd5c3]' },
+            { step: '4. Approved', count: approvedCount, color: 'bg-[#694737]/15 text-[#694737] border-[#694737]/30' },
+            { step: '5. Dispatched', count: dispatchedCount, color: 'bg-[#35422d]/15 text-[#35422d] border-[#35422d]/30' },
+            { step: '6. Replied', count: repliedCount, color: 'bg-[#35422d] text-[#f5eddf] border-[#35422d]' },
           ].map((stage, i) => (
-            <div key={i} className={`p-3 sm:p-4 rounded-xl border ${stage.color} space-y-1 text-center`}>
-              <div className="text-[11px] sm:text-xs font-medium opacity-80">{stage.step}</div>
-              <div className="text-xl sm:text-2xl font-bold">{stage.count}</div>
+            <div key={i} className={`p-3.5 sm:p-4 rounded-[18px_14px_20px_12px] border ${stage.color} space-y-1 text-center`}>
+              <div className="text-[11px] sm:text-xs font-medium opacity-90">{stage.step}</div>
+              <div className="font-serif text-2xl sm:text-3xl font-normal">{stage.count}</div>
             </div>
           ))}
         </div>
@@ -236,52 +247,52 @@ export function OverviewView({ onOpenDiscoverModal, onOpenNewCampaignModal }: Ov
       {/* Two Column Section: Campaigns & Quality Checklist */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Active Campaigns Column */}
-        <div className="lg:col-span-2 rounded-2xl border border-zinc-800/80 bg-zinc-900/40 overflow-hidden">
-          <div className="p-5 border-b border-zinc-800 flex items-center justify-between">
+        <div className="lg:col-span-2 rounded-[28px_20px_30px_18px] border border-[#ddd5c3] bg-[#f5eddf] overflow-hidden shadow-sm">
+          <div className="p-5 border-b border-[#ddd5c3] flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-semibold text-white">Active Prospecting Campaigns</h2>
-              <p className="text-xs text-zinc-500">Target segments, services, and qualified lead counts</p>
+              <h2 className="font-serif text-base sm:text-lg font-medium text-[#29251d]">Active Prospecting Campaigns</h2>
+              <p className="text-xs text-[#443b2f]">Target segments, services, and qualified lead counts</p>
             </div>
             {onOpenNewCampaignModal ? (
               <button
                 onClick={onOpenNewCampaignModal}
-                className="text-xs text-violet-400 hover:text-violet-300 font-semibold flex items-center gap-1"
+                className="text-xs text-[#35422d] hover:text-[#273320] font-semibold flex items-center gap-1"
               >
                 New Campaign <ArrowUpRight size={14} />
               </button>
             ) : (
               <Link
                 href="/campaigns"
-                className="text-xs text-violet-400 hover:text-violet-300 font-semibold flex items-center gap-1"
+                className="text-xs text-[#35422d] hover:text-[#273320] font-semibold flex items-center gap-1"
               >
                 View All <ArrowUpRight size={14} />
               </Link>
             )}
           </div>
 
-          <div className="divide-y divide-zinc-800/60">
+          <div className="divide-y divide-[#ddd5c3]/70">
             {campaigns.length === 0 ? (
-              <div className="p-8 text-center text-xs text-zinc-500">No campaigns created yet.</div>
+              <div className="p-8 text-center text-xs text-[#443b2f]">No campaigns created yet.</div>
             ) : (
               campaigns.map((c) => (
-                <div key={c.id} className="p-5 hover:bg-zinc-800/20 transition-colors flex items-center justify-between">
+                <div key={c.id} className="p-5 hover:bg-[#eee6d6]/40 transition-colors flex items-center justify-between">
                   <div className="space-y-1.5">
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold text-sm text-zinc-100">{c.name}</span>
-                      <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800/60">
+                      <span className="font-serif font-medium text-base text-[#29251d]">{c.name}</span>
+                      <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-[#35422d]/15 text-[#35422d] border border-[#35422d]/30">
                         {c.status}
                       </span>
                     </div>
-                    <div className="flex flex-wrap gap-1.5 text-[11px] text-zinc-400">
-                      <span className="text-zinc-500">Markets:</span>
+                    <div className="flex flex-wrap gap-1.5 text-[11px] text-[#443b2f]">
+                      <span className="text-[#694737] font-medium">Markets:</span>
                       {c.target_markets.map((m, idx) => (
-                        <span key={idx} className="bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-300">
+                        <span key={idx} className="bg-[#eee6d6] px-2 py-0.5 rounded-md text-[#29251d]">
                           {m}
                         </span>
                       ))}
-                      <span className="text-zinc-500 ml-2">Services:</span>
+                      <span className="text-[#694737] font-medium ml-2">Services:</span>
                       {c.services.slice(0, 2).map((s, idx) => (
-                        <span key={idx} className="bg-violet-950/60 text-violet-300 px-1.5 py-0.5 rounded">
+                        <span key={idx} className="bg-[#694737]/10 text-[#694737] px-2 py-0.5 rounded-md">
                           {s}
                         </span>
                       ))}
@@ -290,12 +301,12 @@ export function OverviewView({ onOpenDiscoverModal, onOpenNewCampaignModal }: Ov
 
                   <div className="flex items-center gap-3">
                     <div className="text-right">
-                      <div className="text-xs font-semibold text-zinc-200">{c.leads_count} Leads</div>
-                      <div className="text-[11px] text-zinc-500">{c.drafts_count} Drafts</div>
+                      <div className="font-serif text-sm font-medium text-[#29251d]">{c.leads_count} Leads</div>
+                      <div className="text-[11px] text-[#443b2f]">{c.drafts_count} Drafts</div>
                     </div>
                     <Link
                       href="/leads"
-                      className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-xs font-medium text-zinc-200 transition-colors"
+                      className="px-3.5 py-1.5 rounded-[18px_12px_16px_14px] bg-[#eee6d6] hover:bg-[#ddd5c3] text-xs font-medium text-[#29251d] border border-[#ddd5c3] transition-colors"
                     >
                       Leads
                     </Link>
@@ -306,17 +317,19 @@ export function OverviewView({ onOpenDiscoverModal, onOpenNewCampaignModal }: Ov
           </div>
         </div>
 
-        {/* Quality Safeguards Column */}
-        <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/40 p-5 space-y-4">
-          <div className="flex items-center gap-2">
-            <ShieldAlert size={18} className="text-violet-400" />
+        {/* Quality Safeguards Column in Warm Clay Tone */}
+        <div className="rounded-[28px_20px_30px_18px] border border-[#ddd5c3] bg-[#f5eddf] p-6 space-y-4 shadow-sm">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-[#694737]/10 text-[#694737]">
+              <ShieldAlert size={18} />
+            </div>
             <div>
-              <h2 className="text-sm font-semibold text-white">Outreach Guardrails</h2>
-              <p className="text-[11px] text-zinc-500">Automated safety verification criteria</p>
+              <h2 className="font-serif text-base font-medium text-[#29251d]">Outreach Guardrails</h2>
+              <p className="text-[11px] text-[#443b2f]">Automated safety verification criteria</p>
             </div>
           </div>
 
-          <div className="space-y-3 pt-2">
+          <div className="space-y-3.5 pt-1">
             {[
               { title: 'Evidence Grounding', desc: 'Every draft references real website findings & source URLs.' },
               { title: 'Email Verification', desc: 'Addresses must be verified by RFC, MX & Hunter before approval.' },
@@ -325,10 +338,10 @@ export function OverviewView({ onOpenDiscoverModal, onOpenNewCampaignModal }: Ov
               { title: 'Master Killswitch', desc: 'Global toggle protects email reputation from unintended sends.' },
             ].map((rule, idx) => (
               <div key={idx} className="flex items-start gap-2.5 text-xs">
-                <CheckCircle2 size={16} className="text-emerald-400 shrink-0 mt-0.5" />
+                <CheckCircle2 size={16} className="text-[#35422d] shrink-0 mt-0.5" />
                 <div>
-                  <div className="font-medium text-zinc-200">{rule.title}</div>
-                  <div className="text-[11px] text-zinc-500 leading-snug">{rule.desc}</div>
+                  <div className="font-medium text-[#29251d]">{rule.title}</div>
+                  <div className="text-[11px] text-[#443b2f] leading-snug">{rule.desc}</div>
                 </div>
               </div>
             ))}
@@ -338,4 +351,3 @@ export function OverviewView({ onOpenDiscoverModal, onOpenNewCampaignModal }: Ov
     </div>
   );
 }
-
