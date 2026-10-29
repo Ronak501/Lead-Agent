@@ -66,7 +66,11 @@ from .providers.website_analyzer import WebsiteAuditProvider
 from .providers.ai_drafter import EmailDraftProvider
 from .providers.safe_outreach import SafeEmailSender, SafetyViolation
 from .auth import verify_google_credential, verify_ornitech_email_login, get_current_user
-from .automation_service import AutomationEngine, send_reply_notification_email
+from .automation_service import (
+    AutomationEngine,
+    send_reply_notification_email,
+    is_target_already_contacted,
+)
 from .seed import seed_database
 
 router = APIRouter(prefix="/api")
@@ -493,8 +497,11 @@ async def discover_leads(payload: LeadDiscoveryRequest, db: Session = Depends(ge
         raw_email = item.get("business_email")
         norm_email = normalize_email(raw_email)
 
-        # Check suppression
-        if norm_email and db.query(Suppression).filter_by(workspace_id=ws_id, email_normalized=norm_email).first():
+        # Strict Anti-Spam & De-duplication check: Never contact same startup or founder again
+        already_contacted, reason = is_target_already_contacted(
+            db, ws_id, domain=norm_domain, email=norm_email
+        )
+        if already_contacted:
             continue
 
         # Check existing company by normalized domain
@@ -560,6 +567,18 @@ async def discover_leads(payload: LeadDiscoveryRequest, db: Session = Depends(ge
         )
         db.add(ev)
         db.flush()
+
+        # Audit log entry for evidence-backed discovery
+        db.add(
+            AuditLog(
+                workspace_id=ws_id,
+                user_email="system@leadpilot.ai",
+                action="lead_discovered",
+                entity_type="lead",
+                entity_id=lead.id,
+                details=f"Discovered {company.name} ({norm_domain}) for campaign {payload.campaign_id}",
+            )
+        )
 
         created_leads.append(
             LeadOut(
@@ -976,7 +995,20 @@ async def send_draft(draft_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=422, detail="A sourced business email is required.")
 
     ws_id = get_current_workspace_id()
-    email_norm = str(lead.contact.business_email).lower()
+    company_domain = lead.company.domain if lead.company else None
+    contact_email = lead.contact.business_email
+
+    # Strict Anti-Spam & De-duplication Check: Never send outreach twice to same startup or founder
+    already_contacted, reason = is_target_already_contacted(
+        db, ws_id, domain=company_domain, email=contact_email
+    )
+    if already_contacted:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Anti-Spam Restriction: Cannot dispatch email. {reason}",
+        )
+
+    email_norm = str(contact_email).lower()
     is_suppressed = bool(db.query(Suppression).filter_by(workspace_id=ws_id, email_normalized=email_norm).first())
 
     try:
@@ -1008,6 +1040,18 @@ async def send_draft(draft_id: str, db: Session = Depends(get_db)):
         details=json.dumps({"mode": send_result["mode"], "recipient": lead.contact.business_email}),
     )
     db.add(event)
+
+    # Record audit log
+    db.add(
+        AuditLog(
+            workspace_id=ws_id,
+            user_email="system@leadpilot.ai",
+            action="email_dispatched",
+            entity_type="email_draft",
+            entity_id=draft.id,
+            details=f"Dispatched cold email to {lead.contact.business_email} ({company_domain}) via {send_result['provider']}",
+        )
+    )
     db.commit()
 
     return SendDraftResponse(
@@ -1097,11 +1141,14 @@ async def execute_lead_autopilot(lead: Lead, db: Session) -> dict:
     recipient_email = lead.contact.business_email
     email_norm = str(recipient_email).lower()
 
-    # Check workspace suppression
-    if db.query(Suppression).filter_by(workspace_id=ws_id, email_normalized=email_norm).first():
+    # Strict Anti-Spam & De-duplication Check: Never send outreach twice to same startup or founder
+    already_contacted, reason = is_target_already_contacted(
+        db, ws_id, domain=company.domain, email=recipient_email
+    )
+    if already_contacted:
         raise HTTPException(
             status_code=422,
-            detail=f"Automated sending aborted: {recipient_email} is on the workspace suppression list.",
+            detail=f"Anti-Spam Restriction: Automated sending aborted. {reason}",
         )
 
     # 2. Website Audit
@@ -1116,14 +1163,29 @@ async def execute_lead_autopilot(lead: Lead, db: Session) -> dict:
             audit_res = await audit_provider.audit(company.website_url)
             latest_audit = WebsiteAudit(
                 company_id=company.id,
-                url=audit_res["url"],
-                performance_score=audit_res["performance_score"],
-                status_code=audit_res["status_code"],
-                tech_stack_json=json.dumps(audit_res["tech_stack"]),
-                issues_found_json=json.dumps(audit_res["issues_found"]),
+                status_code=audit_res.get("status_code", 200),
+                title=audit_res.get("title", ""),
+                meta_description=audit_res.get("meta_description", ""),
+                tech_stack_json=json.dumps(audit_res.get("tech_stack", [])),
+                issues_found_json=json.dumps(audit_res.get("issues_found", [])),
+                opportunity_summary=audit_res.get("opportunity_summary", ""),
+                performance_score=audit_res.get("performance_score", 70),
             )
             db.add(latest_audit)
             db.flush()
+
+            # Store audit findings as source evidence
+            if audit_res.get("issues_found"):
+                ev = Evidence(
+                    lead_id=lead.id,
+                    company_id=company.id,
+                    source_url=company.website_url,
+                    evidence_type="website_technical_audit",
+                    excerpt=f"Audit findings: {'; '.join(audit_res['issues_found'][:3])}",
+                    confidence=0.92,
+                )
+                db.add(ev)
+                db.flush()
         except Exception:
             latest_audit = None
 
@@ -1214,6 +1276,18 @@ async def execute_lead_autopilot(lead: Lead, db: Session) -> dict:
         }),
     )
     db.add(event)
+
+    # Record AuditLog
+    db.add(
+        AuditLog(
+            workspace_id=ws_id,
+            user_email="autopilot@ornitech.in",
+            action="autopilot_dispatched",
+            entity_type="lead",
+            entity_id=lead.id,
+            details=f"Autopilot dispatched cold email to {recipient_email} ({company.name})",
+        )
+    )
     db.commit()
 
     return {
@@ -1260,6 +1334,20 @@ async def batch_auto_dispatch_leads(payload: BatchAutoDispatchRequest, db: Sessi
 
     for l in leads:
         try:
+            # Strict Anti-Spam Check before attempting outreach
+            company_domain = l.company.domain if l.company else None
+            contact_email = l.contact.business_email if l.contact else None
+            contacted, reason = is_target_already_contacted(
+                db, ws_id, domain=company_domain, email=contact_email
+            )
+            if contacted:
+                failed.append({
+                    "lead_id": l.id,
+                    "company_name": l.company.name if l.company else "Unknown",
+                    "error": f"Skipped (Anti-Spam): {reason}",
+                })
+                continue
+
             r = await execute_lead_autopilot(l, db)
             dispatched.append(r)
         except Exception as exc:

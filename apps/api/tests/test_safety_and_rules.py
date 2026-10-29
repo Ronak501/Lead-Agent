@@ -250,5 +250,70 @@ async def test_ai_drafter_grounds_in_evidence():
     assert len(draft["evidence_urls"]) == 1
 
 
+def test_anti_spam_deduplication_rule(db_session):
+    """Verify that an email can NEVER be sent twice to the same startup domain or founder email."""
+    from app.automation_service import is_target_already_contacted
+
+    ws = db_session.query(Workspace).filter_by(id="ws_test").first()
+    comp = Company(
+        workspace_id=ws.id,
+        name="Acme Startups",
+        domain="acmestartup.io",
+        website_url="https://acmestartup.io",
+    )
+    db_session.add(comp)
+    db_session.flush()
+
+    cnt = Contact(
+        company_id=comp.id,
+        full_name="Alice Founder",
+        business_email="alice@acmestartup.io",
+        email_status="verified",
+    )
+    db_session.add(cnt)
+    db_session.flush()
+
+    lead = Lead(
+        campaign_id="cmp_test",
+        company_id=comp.id,
+        contact_id=cnt.id,
+        status="qualified",
+    )
+    db_session.add(lead)
+    db_session.flush()
+
+    # Before outreach has occurred:
+    contacted, _ = is_target_already_contacted(
+        db_session, ws.id, domain="acmestartup.io", email="alice@acmestartup.io"
+    )
+    assert not contacted
+
+    # Simulate email sent
+    draft = EmailDraft(
+        lead_id=lead.id,
+        subject="Feedback on Acme",
+        body_text="Hi Alice",
+        status="sent",
+        sent_at=datetime.now(timezone.utc),
+    )
+    db_session.add(draft)
+    lead.status = "sent"
+    db_session.commit()
+
+    # After outreach: Both domain and founder email MUST be blocked from any future outreach!
+    contacted_domain, reason_d = is_target_already_contacted(
+        db_session, ws.id, domain="acmestartup.io", email="anotherfounder@acmestartup.io"
+    )
+    assert contacted_domain
+    assert "acmestartup.io" in reason_d
+
+    contacted_founder, reason_f = is_target_already_contacted(
+        db_session, ws.id, domain="differentbrand.com", email="alice@acmestartup.io"
+    )
+    assert contacted_founder
+    assert "alice@acmestartup.io" in reason_f
+
+
+
 
 

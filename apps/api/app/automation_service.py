@@ -7,7 +7,7 @@ import logging
 from datetime import datetime, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional, Tuple
 from sqlalchemy.orm import Session
 
 from .config import settings
@@ -20,7 +20,9 @@ from .models import (
     EmailApproval,
     EmailEvent,
     WebsiteAudit,
+    SourceEvidence,
     Suppression,
+    AuditLog,
     normalize_domain,
     normalize_email,
 )
@@ -37,6 +39,93 @@ verification_provider = EmailVerificationProvider()
 audit_provider = WebsiteAuditProvider()
 draft_provider = EmailDraftProvider()
 safe_sender = SafeEmailSender()
+
+
+def is_target_already_contacted(
+    db: Session,
+    workspace_id: str,
+    domain: Optional[str] = None,
+    email: Optional[str] = None,
+) -> Tuple[bool, str]:
+    """
+    Strict Anti-Spam & De-duplication Rule:
+    Ensures LeadPilot NEVER sends an outreach email twice to the same startup/company
+    or the same founder/contact email across ANY campaign in the workspace.
+    
+    Returns (True, reason) if previously contacted or suppressed, else (False, "").
+    """
+    norm_domain = normalize_domain(domain) if domain else None
+    norm_email = normalize_email(email) if email else None
+
+    # 1. Check workspace suppression list
+    if norm_email:
+        sup_email = db.query(Suppression).filter_by(workspace_id=workspace_id, email_normalized=norm_email).first()
+        if sup_email:
+            return True, f"Founder email '{norm_email}' is on workspace suppression list ({sup_email.reason})"
+
+    if norm_domain:
+        sup_domain = db.query(Suppression).filter_by(workspace_id=workspace_id, domain_normalized=norm_domain).first()
+        if sup_domain:
+            return True, f"Startup domain '{norm_domain}' is on workspace suppression list ({sup_domain.reason})"
+
+    # 2. Check if this company / startup domain has already received a sent email or replied in ANY campaign
+    if norm_domain:
+        sent_domain_draft = (
+            db.query(EmailDraft.id, Company.name)
+            .join(Lead, Lead.id == EmailDraft.lead_id)
+            .join(Company, Company.id == Lead.company_id)
+            .filter(
+                Company.workspace_id == workspace_id,
+                Company.domain == norm_domain,
+                EmailDraft.status.in_(["sent", "replied"]),
+            )
+            .first()
+        )
+        if sent_domain_draft:
+            return True, f"Startup '{sent_domain_draft.name}' ({norm_domain}) has already received an email (Draft ID: {sent_domain_draft.id})"
+
+        sent_domain_lead = (
+            db.query(Lead.id, Company.name)
+            .join(Company, Company.id == Lead.company_id)
+            .filter(
+                Company.workspace_id == workspace_id,
+                Company.domain == norm_domain,
+                Lead.status.in_(["sent", "replied"]),
+            )
+            .first()
+        )
+        if sent_domain_lead:
+            return True, f"Startup '{sent_domain_lead.name}' ({norm_domain}) already has status 'sent' or 'replied'"
+
+    # 3. Check if this founder email has already received a sent email or replied in ANY campaign
+    if norm_email:
+        sent_founder_approval = (
+            db.query(EmailApproval.draft_id)
+            .join(EmailDraft, EmailDraft.id == EmailApproval.draft_id)
+            .filter(
+                EmailApproval.recipient_email == norm_email,
+                EmailDraft.status.in_(["sent", "replied"]),
+            )
+            .first()
+        )
+        if sent_founder_approval:
+            return True, f"Founder email '{norm_email}' has already received outreach (Draft ID: {sent_founder_approval.draft_id})"
+
+        sent_founder_lead = (
+            db.query(Lead.id)
+            .join(Contact, Contact.id == Lead.contact_id)
+            .join(Company, Company.id == Lead.company_id)
+            .filter(
+                Company.workspace_id == workspace_id,
+                Contact.business_email == norm_email,
+                Lead.status.in_(["sent", "replied"]),
+            )
+            .first()
+        )
+        if sent_founder_lead:
+            return True, f"Founder email '{norm_email}' already has status 'sent' or 'replied'"
+
+    return False, ""
 
 
 def send_reply_notification_email(
@@ -199,12 +288,21 @@ class AutomationEngine:
             if not domain:
                 continue
 
-            # Check domain suppression
-            is_suppressed = db.query(Suppression).filter_by(
+            contact_name = item.get("contact_name") or "Founder & CEO"
+            first_name = contact_name.split()[0].lower() if contact_name else "founder"
+            contact_email = normalize_email(
+                item.get("business_email") or item.get("contact_email") or f"{first_name}@{domain}"
+            )
+
+            # Strict Anti-Spam Check: Never re-discover or contact the same startup or founder again!
+            already_contacted, reason = is_target_already_contacted(
+                db=db,
                 workspace_id=campaign.workspace_id,
-                domain_normalized=domain,
-            ).first()
-            if is_suppressed:
+                domain=domain,
+                email=contact_email,
+            )
+            if already_contacted:
+                logger.info(f"🚫 Anti-Spam Guard: Skipping previously contacted target: {reason}")
                 continue
 
             # Upsert company
@@ -227,12 +325,6 @@ class AutomationEngine:
                 db.flush()
 
             # Find or create contact with verified email
-            contact_name = item.get("contact_name") or "Founder & CEO"
-            first_name = contact_name.split()[0].lower() if contact_name else "founder"
-            contact_email = normalize_email(
-                item.get("business_email") or item.get("contact_email") or f"{first_name}@{domain}"
-            )
-
             contact = db.query(Contact).filter_by(
                 company_id=company.id,
                 business_email=contact_email,
@@ -268,6 +360,29 @@ class AutomationEngine:
                 db.flush()
                 created_leads.append(lead)
 
+                # Store directory discovery evidence in database
+                ev = SourceEvidence(
+                    lead_id=lead.id,
+                    company_id=company.id,
+                    source_url=company.website_url or f"https://{domain}",
+                    evidence_type="directory_listing",
+                    excerpt=item.get("description") or f"Verified domain & founder profile for {company.name} in {campaign.target_country}",
+                    confidence=0.88,
+                )
+                db.add(ev)
+                db.flush()
+
+                # Record discovery audit log in database
+                audit_log = AuditLog(
+                    workspace_id=campaign.workspace_id,
+                    user_email=settings.SENDER_EMAIL or "founder@ornitech.in",
+                    action="lead_discovered",
+                    entity_type="lead",
+                    entity_id=lead.id,
+                    details=json.dumps({"company": company.name, "domain": domain, "founder_email": contact_email}),
+                )
+                db.add(audit_log)
+
         db.commit()
         return created_leads
 
@@ -285,6 +400,23 @@ class AutomationEngine:
             return False
 
         recipient_email = contact.business_email
+
+        # 🚫 Strict Anti-Spam Check: Never send email again to the same startup or founder!
+        if lead.status in ("sent", "replied"):
+            logger.info(f"🚫 Anti-Spam Safety: Lead {lead.id} ({company.name}) is already marked '{lead.status}'. Skipping dispatch.")
+            return False
+
+        already_contacted, reason = is_target_already_contacted(
+            db=db,
+            workspace_id=company.workspace_id,
+            domain=company.domain,
+            email=recipient_email,
+        )
+        if already_contacted:
+            logger.info(f"🚫 Anti-Spam Guard blocked duplicate dispatch: {reason}")
+            lead.status = "sent"  # Keep synchronized so it won't be retried
+            db.commit()
+            return False
 
         # 1. Audit website if not audited yet
         latest_audit = db.query(WebsiteAudit).filter_by(company_id=company.id).first()
@@ -306,6 +438,22 @@ class AutomationEngine:
                 db.flush()
             except Exception:
                 latest_audit = None
+
+        # Store audit findings as SourceEvidence in database
+        if latest_audit:
+            for issue in latest_audit.issues_found:
+                existing_ev = db.query(SourceEvidence).filter_by(lead_id=lead.id, excerpt=issue).first()
+                if not existing_ev:
+                    ev = SourceEvidence(
+                        lead_id=lead.id,
+                        company_id=company.id,
+                        source_url=company.website_url or f"https://{company.domain}",
+                        evidence_type="website_performance",
+                        excerpt=issue,
+                        confidence=0.92,
+                    )
+                    db.add(ev)
+            db.flush()
 
         # 2. Generate personalized draft
         audit_findings = latest_audit.issues_found if latest_audit else [
@@ -333,7 +481,7 @@ class AutomationEngine:
             body_text=draft_res["body_text"],
             evidence_urls_json=json.dumps(draft_res.get("evidence_urls", [company.website_url])),
             confidence=draft_res.get("confidence", 0.92),
-            model=draft_res.get("model", "groq-llama-3.1-8b"),
+            model=draft_res.get("model", "groq-llama-3.3-70b"),
             status="approved",
             approval_hash=content_hash,
             approved_by="Ornitech Autonomous Engine",
@@ -386,6 +534,24 @@ class AutomationEngine:
                 }),
             )
             db.add(event)
+
+            # Record audit log in database
+            audit_log = AuditLog(
+                workspace_id=company.workspace_id,
+                user_email=settings.SENDER_EMAIL or "founder@ornitech.in",
+                action="outreach_email_dispatched",
+                entity_type="draft",
+                entity_id=draft.id,
+                details=json.dumps({
+                    "recipient_email": recipient_email,
+                    "company_name": company.name,
+                    "company_domain": company.domain,
+                    "provider": send_result.get("provider"),
+                    "provider_message_id": send_result.get("provider_message_id"),
+                }),
+            )
+            db.add(audit_log)
+
             db.commit()
             return True
         except Exception as e:
