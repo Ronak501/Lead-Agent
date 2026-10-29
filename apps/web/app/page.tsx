@@ -41,6 +41,7 @@ import {
 } from 'lucide-react';
 import { LeadDetailsView } from '../components/LeadDetailsView';
 import { ApprovalQueueView } from '../components/ApprovalQueueView';
+import { AuthGate } from '../components/AuthGate';
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
@@ -160,6 +161,9 @@ type Analytics = {
 type TabType = 'overview' | 'campaigns' | 'leads' | 'drafts' | 'review' | 'analytics' | 'integrations' | 'settings';
 
 export default function Home() {
+  const [currentUser, setCurrentUser] = useState<{ id: string; email: string; full_name: string; domain: string } | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [apiStatus, setApiStatus] = useState<'checking' | 'online' | 'offline'>('checking');
@@ -266,8 +270,33 @@ export default function Home() {
   };
 
   useEffect(() => {
+    try {
+      const stored = localStorage.getItem('ornitech_user');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.email && (parsed.email.endsWith('@ornitech.in') || parsed.domain === 'ornitech.in')) {
+          setCurrentUser(parsed);
+        } else {
+          localStorage.removeItem('ornitech_user');
+          localStorage.removeItem('ornitech_token');
+          setCurrentUser(null);
+        }
+      }
+    } catch {
+      localStorage.removeItem('ornitech_user');
+      localStorage.removeItem('ornitech_token');
+    } finally {
+      setIsAuthLoading(false);
+    }
     void fetchData();
   }, []);
+
+  const handleSignOut = () => {
+    localStorage.removeItem('ornitech_user');
+    localStorage.removeItem('ornitech_token');
+    setCurrentUser(null);
+    notify('Signed out successfully.', 'info');
+  };
 
   const notify = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
     setNotification({ message, type });
@@ -597,6 +626,27 @@ export default function Home() {
     }
   };
 
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center text-zinc-400 text-xs space-y-3">
+        <div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
+        <p>Verifying Ornitech Workspace session...</p>
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return (
+      <AuthGate
+        apiBaseUrl={API}
+        onAuthenticated={(user) => {
+          setCurrentUser(user);
+          void fetchData();
+        }}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#09090b] text-[#f4f4f5] flex">
       {/* Toast Notification */}
@@ -735,7 +785,19 @@ export default function Home() {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-4">
-
+            {currentUser && (
+              <div className="flex items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                <span className="font-semibold text-white hidden md:inline">{currentUser.full_name || 'Team Member'}</span>
+                <span className="text-zinc-500 hidden sm:inline">({currentUser.email})</span>
+                <button
+                  onClick={handleSignOut}
+                  className="ml-1 text-[11px] text-red-400 hover:text-red-300 hover:underline font-semibold"
+                >
+                  Sign Out
+                </button>
+              </div>
+            )}
 
             {/* Quick Actions */}
             <button

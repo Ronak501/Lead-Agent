@@ -57,6 +57,7 @@ from .schemas import (
     OAuthCallbackPayload,
     GoogleAuthVerifyRequest,
     GoogleAuthVerifyResponse,
+    OrnitechLoginRequest,
     AutomationRunResponse,
 )
 from .providers.discovery import CompanyDiscoveryProvider, ProviderNotConfiguredException
@@ -64,7 +65,7 @@ from .providers.verification import EmailVerificationProvider
 from .providers.website_analyzer import WebsiteAuditProvider
 from .providers.ai_drafter import EmailDraftProvider
 from .providers.safe_outreach import SafeEmailSender, SafetyViolation
-from .auth import verify_google_credential, get_current_user
+from .auth import verify_google_credential, verify_ornitech_email_login, get_current_user
 from .automation_service import AutomationEngine, send_reply_notification_email
 from .seed import seed_database
 
@@ -1605,6 +1606,12 @@ def handle_gmail_oauth_callback(payload: OAuthCallbackPayload, db: Session = Dep
 def verify_google_oauth(payload: GoogleAuthVerifyRequest, db: Session = Depends(get_db)):
     """Verifies Google Sign-In and strictly enforces @ornitech.in domain access restriction."""
     return verify_google_credential(payload.credential, db)
+
+
+@router.post("/auth/ornitech/login", response_model=GoogleAuthVerifyResponse)
+def login_ornitech(payload: OrnitechLoginRequest, db: Session = Depends(get_db)):
+    """Direct login for team members strictly enforcing @ornitech.in domain."""
+    return verify_ornitech_email_login(payload.email, payload.full_name, db)
 
 
 @router.get("/auth/me")

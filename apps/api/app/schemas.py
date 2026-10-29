@@ -292,6 +292,12 @@ class GoogleAuthVerifyResponse(BaseModel):
     user: dict[str, Any]
 
 
+class OrnitechLoginRequest(BaseModel):
+    email: str = Field(description="Must be an @ornitech.in email address")
+    full_name: Optional[str] = None
+    access_key: Optional[str] = None
+
+
 class AutomationRunResponse(BaseModel):
     status: str
     active_campaigns: int
