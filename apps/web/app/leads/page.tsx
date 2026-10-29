@@ -15,7 +15,10 @@ export default function LeadsPage() {
       onOpenDiscoverModal={() => setShowDiscoverModal(true)}
       onOpenNewCampaignModal={() => setShowNewCampaignModal(true)}
     >
-      <LeadsView />
+      <LeadsView
+        showDiscoverModal={showDiscoverModal}
+        setShowDiscoverModal={setShowDiscoverModal}
+      />
 
       <NewCampaignModal
         isOpen={showNewCampaignModal}
@@ -29,4 +32,3 @@ export default function LeadsPage() {
     </AppLayout>
   );
 }
-

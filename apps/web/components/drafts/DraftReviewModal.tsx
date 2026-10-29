@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ShieldCheck } from 'lucide-react';
 import { Draft } from '../types';
 import { useApp } from '../../context/AppContext';
@@ -17,6 +17,16 @@ export function DraftReviewModal({ draft, onClose }: DraftReviewModalProps) {
   const [recipientEmail, setRecipientEmail] = useState(draft?.business_email || '');
   const [previewDevice, setPreviewDevice] = useState<'desktop' | 'mobile'>('desktop');
   const [confirmSafetyCheck, setConfirmSafetyCheck] = useState(false);
+
+  useEffect(() => {
+    if (draft) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = prev;
+      };
+    }
+  }, [draft]);
 
   if (!draft) return null;
 

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   Building2,
@@ -15,7 +15,15 @@ import { useApp } from '../../context/AppContext';
 import { LeadDetailsView } from '../LeadDetailsView';
 import { DiscoverLeadsModal } from './DiscoverLeadsModal';
 
-export function LeadsView() {
+interface LeadsViewProps {
+  showDiscoverModal?: boolean;
+  setShowDiscoverModal?: (show: boolean) => void;
+}
+
+export function LeadsView({
+  showDiscoverModal: externalShowDiscoverModal,
+  setShowDiscoverModal: externalSetShowDiscoverModal,
+}: LeadsViewProps) {
   const {
     leads,
     loading,
@@ -27,7 +35,26 @@ export function LeadsView() {
   } = useApp();
 
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
-  const [showDiscoverModal, setShowDiscoverModal] = useState(false);
+  const [internalShowDiscoverModal, setInternalShowDiscoverModal] = useState(false);
+
+  // Use external modal control if provided, otherwise internal fallback
+  const isDiscoverOpen = externalShowDiscoverModal !== undefined
+    ? externalShowDiscoverModal
+    : internalShowDiscoverModal;
+  const setDiscoverOpen = externalSetShowDiscoverModal !== undefined
+    ? externalSetShowDiscoverModal
+    : setInternalShowDiscoverModal;
+
+  // Lock background scroll when drawer is open
+  useEffect(() => {
+    if (selectedLead) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = prev;
+      };
+    }
+  }, [selectedLead]);
 
   const unsentCount = leads.filter((l) => l.status !== 'sent' && l.status !== 'replied').length;
 
@@ -46,7 +73,7 @@ export function LeadsView() {
             <Copy size={13} className="text-[#694737]" /> Export CSV
           </button>
           <button
-            onClick={() => setShowDiscoverModal(true)}
+            onClick={() => setDiscoverOpen(true)}
             className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2 rounded-[22px_16px_24px_14px] border border-[#35422d]/40 bg-[#eee6d6] hover:bg-[#ddd5c3] text-[#29251d] text-xs font-semibold transition-all"
           >
             <Search size={14} className="text-[#35422d]" /> Search New Leads
@@ -167,25 +194,24 @@ export function LeadsView() {
         )}
       </div>
 
-      {/* TABLE VIEW (Tablet & Desktop >= 768px) */}
+      {/* TABLE VIEW (Tablet & Desktop >= 768px, non-scrollable, perfectly fitted) */}
       <div className="hidden md:block rounded-[28px_20px_30px_18px] border border-[#ddd5c3] bg-[#f5eddf] overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs font-sans">
+        <div className="overflow-x-auto no-scrollbar">
+          <table className="w-full text-left text-xs font-sans table-auto">
             <thead className="bg-[#eee6d6] text-[#443b2f] uppercase text-[10px] font-semibold tracking-wider border-b border-[#ddd5c3]">
               <tr>
-                <th className="px-5 py-3.5">Company & Market</th>
-                <th className="px-5 py-3.5">Decision-Maker</th>
-                <th className="px-5 py-3.5">Verified Email</th>
-                <th className="px-5 py-3.5">Website Audit</th>
-                <th className="px-5 py-3.5">Fit Score</th>
-                <th className="px-5 py-3.5">Status</th>
+                <th className="px-5 py-3.5 w-1/4">Company &amp; Market</th>
+                <th className="px-4 py-3.5 w-1/4">Decision Maker &amp; Contact</th>
+                <th className="px-4 py-3.5">Website Audit</th>
+                <th className="px-4 py-3.5 text-center">Fit Score</th>
+                <th className="px-4 py-3.5 text-center">Status</th>
                 <th className="px-5 py-3.5 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#ddd5c3]/70">
               {leads.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-12 text-[#443b2f]">
+                  <td colSpan={6} className="text-center py-12 text-[#443b2f]">
                     No leads discovered yet. Click "Search New Leads" to begin discovery.
                   </td>
                 </tr>
@@ -193,10 +219,10 @@ export function LeadsView() {
                 leads.map((l) => (
                   <tr key={l.id} className="hover:bg-[#eee6d6]/40 transition-colors">
                     {/* Company */}
-                    <td className="px-5 py-4">
+                    <td className="px-5 py-3.5">
                       <div className="font-serif font-medium text-sm text-[#29251d] flex items-center gap-2">
-                        <Building2 size={15} className="text-[#694737]" />
-                        {l.company_name}
+                        <Building2 size={15} className="text-[#694737] shrink-0" />
+                        <span className="truncate">{l.company_name}</span>
                       </div>
                       <div className="text-[11px] text-[#443b2f] mt-0.5 flex items-center gap-1.5 font-sans">
                         <a
@@ -212,92 +238,90 @@ export function LeadsView() {
                       </div>
                     </td>
 
-                    {/* Decision-Maker */}
-                    <td className="px-5 py-4">
-                      <div className="font-medium text-[#29251d]">{l.contact_name || 'Founder'}</div>
-                      <div className="text-[11px] text-[#694737]">{l.contact_title || 'Decision Maker'}</div>
-                    </td>
-
-                    {/* Email */}
-                    <td className="px-5 py-4">
-                      <div className="font-mono text-[#29251d] text-[11px]">{l.business_email || '—'}</div>
-                      <div className="mt-0.5">
+                    {/* Decision-Maker & Verified Email */}
+                    <td className="px-4 py-3.5">
+                      <div className="font-medium text-[#29251d] flex items-center gap-1.5">
+                        <span>{l.contact_name || 'Founder'}</span>
+                        <span className="text-[10px] text-[#694737] font-normal">({l.contact_title || 'Decision Maker'})</span>
+                      </div>
+                      <div className="text-[11px] mt-1 flex items-center gap-2 flex-wrap">
+                        <span className="font-mono text-[#443b2f] text-[10px]">{l.business_email || '—'}</span>
                         <span
-                          className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                          className={`inline-flex items-center gap-1 text-[9px] font-semibold px-1.5 py-0.2 rounded-full ${
                             l.email_status === 'verified'
                               ? 'bg-[#35422d]/15 text-[#35422d] border border-[#35422d]/30'
                               : 'bg-[#ddd5c3] text-[#443b2f]'
                           }`}
                         >
-                          <CheckCircle2 size={10} /> {l.email_status}
+                          <CheckCircle2 size={9} /> {l.email_status}
                         </span>
                       </div>
                     </td>
 
                     {/* Audit Finding */}
-                    <td className="px-5 py-4">
+                    <td className="px-4 py-3.5">
                       {l.audit ? (
-                        <div className="space-y-1">
+                        <div className="space-y-0.5">
                           <div className="flex items-center gap-1.5">
-                            <span className="px-2 py-0.5 rounded text-[10px] bg-[#eee6d6] text-[#29251d] font-semibold border border-[#ddd5c3]">
+                            <span className="px-1.5 py-0.2 rounded text-[10px] bg-[#eee6d6] text-[#29251d] font-semibold border border-[#ddd5c3]">
                               Score: {l.audit.performance_score}/100
                             </span>
-                            <span className="text-[11px] text-[#443b2f]">
-                              {l.audit.tech_stack.slice(0, 2).join(', ')}
+                            <span className="text-[10px] text-[#443b2f] truncate max-w-[100px]">
+                              {l.audit.tech_stack.slice(0, 1).join(', ')}
                             </span>
                           </div>
-                          <div className="text-[11px] text-[#694737] truncate max-w-xs">
-                            {l.audit.issues_found[0] || 'Modern site'}
+                          <div className="text-[10px] text-[#694737] truncate max-w-[160px]">
+                            {l.audit.issues_found[0] || 'Responsive'}
                           </div>
                         </div>
                       ) : (
                         <button
                           onClick={() => handleAuditWebsite(l.id)}
-                          className="px-2.5 py-1 rounded-[14px_10px_16px_12px] bg-[#eee6d6] hover:bg-[#ddd5c3] text-[#29251d] border border-[#ddd5c3] text-[11px] font-medium"
+                          className="px-2 py-0.5 rounded-[12px_8px_14px_10px] bg-[#eee6d6] hover:bg-[#ddd5c3] text-[#29251d] border border-[#ddd5c3] text-[10px] font-medium"
                         >
-                          Run Live Audit
+                          Run Audit
                         </button>
                       )}
                     </td>
 
                     {/* Fit Score */}
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-1.5 font-serif">
-                        <span className="font-semibold text-base text-[#29251d]">{l.fit_score}</span>
-                        <span className="text-[11px] text-[#694737]">/100</span>
+                    <td className="px-4 py-3.5 text-center">
+                      <div className="inline-flex items-center gap-1 font-serif">
+                        <span className="font-semibold text-sm text-[#29251d]">{l.fit_score}</span>
+                        <span className="text-[10px] text-[#694737]">/100</span>
                       </div>
                     </td>
 
                     {/* Status */}
-                    <td className="px-5 py-4">
-                      <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-[#eee6d6] border border-[#ddd5c3] text-[#443b2f] font-medium">
+                    <td className="px-4 py-3.5 text-center">
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#eee6d6] border border-[#ddd5c3] text-[#443b2f] font-medium uppercase">
                         {l.status}
                       </span>
                     </td>
 
                     {/* Actions */}
-                    <td className="px-5 py-4 text-right space-x-2">
+                    <td className="px-5 py-3.5 text-right whitespace-nowrap space-x-1.5">
                       <button
                         onClick={() => setSelectedLead(l)}
-                        className="px-3 py-1.5 rounded-[18px_12px_16px_14px] border border-[#ddd5c3] bg-[#eee6d6] hover:bg-[#ddd5c3] text-[#29251d] font-medium"
+                        className="px-2.5 py-1 rounded-[14px_10px_12px_10px] border border-[#ddd5c3] bg-[#eee6d6] hover:bg-[#ddd5c3] text-[#29251d] text-xs font-medium transition-colors"
                       >
                         View Details
                       </button>
                       {l.status === 'sent' || l.status === 'replied' ? (
                         <Link
                           href="/analytics"
-                          className="px-3 py-1.5 rounded-[18px_12px_16px_14px] bg-[#35422d]/15 border border-[#35422d]/30 text-[#35422d] font-semibold inline-flex items-center gap-1"
+                          className="px-2.5 py-1 rounded-[14px_10px_12px_10px] bg-[#35422d]/15 border border-[#35422d]/30 text-[#35422d] text-xs font-semibold inline-flex items-center gap-1"
                         >
-                          <CheckCircle2 size={12} /> {l.status === 'replied' ? 'Replied' : 'Sent'}
+                          <CheckCircle2 size={11} /> {l.status === 'replied' ? 'Replied' : 'Sent'}
                         </Link>
                       ) : (
                         <button
                           onClick={() => handleAutoDispatchLead(l.id, l.company_name)}
                           disabled={loading}
-                          className="px-3.5 py-1.5 rounded-[22px_16px_24px_14px] bg-[#694737] hover:bg-[#53372a] text-[#f5eddf] font-semibold shadow-xs inline-flex items-center gap-1 transition-all disabled:opacity-50 active:scale-[0.98]"
+                          className="px-3 py-1 rounded-[18px_12px_16px_10px] bg-[#694737] hover:bg-[#53372a] text-[#f5eddf] text-xs font-semibold shadow-xs inline-flex items-center gap-1 transition-all disabled:opacity-50 active:scale-[0.98]"
                           title="Autonomous: Audit -> Draft -> Approve -> Send"
                         >
-                          <Zap size={12} className="fill-[#ad7d62] text-[#ad7d62]" /> Auto-Send
+                          <Zap size={11} className="fill-[#ad7d62] text-[#ad7d62]" /> Auto-Send
                         </button>
                       )}
                     </td>
@@ -338,30 +362,30 @@ export function LeadsView() {
                 <button
                   onClick={() => setSelectedLead(null)}
                   className="h-8 w-8 rounded-xl text-[#443b2f] hover:text-[#29251d] hover:bg-[#ddd5c3]/60 flex items-center justify-center transition-colors text-sm"
-                  title="Close Dossier"
                 >
                   ✕
                 </button>
               </div>
             </div>
+
             <LeadDetailsView
               lead={selectedLead}
               onBack={() => setSelectedLead(null)}
               onAuditWebsite={handleAuditWebsite}
-              onGenerateDraft={(leadId) => {
-                handleGenerateDraft(leadId);
-                setSelectedLead(null);
-              }}
+              onGenerateDraft={handleGenerateDraft}
               loading={loading}
             />
           </div>
         </div>
       )}
 
-      <DiscoverLeadsModal
-        isOpen={showDiscoverModal}
-        onClose={() => setShowDiscoverModal(false)}
-      />
+      {/* Internal modal fallback only if external props not provided */}
+      {externalShowDiscoverModal === undefined && (
+        <DiscoverLeadsModal
+          isOpen={internalShowDiscoverModal}
+          onClose={() => setInternalShowDiscoverModal(false)}
+        />
+      )}
     </div>
   );
 }

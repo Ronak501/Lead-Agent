@@ -6,11 +6,37 @@ import { useApp } from '../../context/AppContext';
 import { NewCampaignModal } from './NewCampaignModal';
 import { DiscoverLeadsModal } from '../leads/DiscoverLeadsModal';
 
-export function CampaignsView() {
+interface CampaignsViewProps {
+  showNewCampaignModal?: boolean;
+  setShowNewCampaignModal?: (show: boolean) => void;
+  showDiscoverModal?: boolean;
+  setShowDiscoverModal?: (show: boolean) => void;
+}
+
+export function CampaignsView({
+  showNewCampaignModal: externalShowNewCampaignModal,
+  setShowNewCampaignModal: externalSetShowNewCampaignModal,
+  showDiscoverModal: externalShowDiscoverModal,
+  setShowDiscoverModal: externalSetShowDiscoverModal,
+}: CampaignsViewProps) {
   const { campaigns } = useApp();
-  const [showNewCampaignModal, setShowNewCampaignModal] = useState(false);
-  const [showDiscoverModal, setShowDiscoverModal] = useState(false);
+  const [internalShowNewCampaignModal, setInternalShowNewCampaignModal] = useState(false);
+  const [internalShowDiscoverModal, setInternalShowDiscoverModal] = useState(false);
   const [discoverQuery, setDiscoverQuery] = useState('');
+
+  const isNewCampaignOpen = externalShowNewCampaignModal !== undefined
+    ? externalShowNewCampaignModal
+    : internalShowNewCampaignModal;
+  const setNewCampaignOpen = externalSetShowNewCampaignModal !== undefined
+    ? externalSetShowNewCampaignModal
+    : setInternalShowNewCampaignModal;
+
+  const isDiscoverOpen = externalShowDiscoverModal !== undefined
+    ? externalShowDiscoverModal
+    : internalShowDiscoverModal;
+  const setDiscoverOpen = externalSetShowDiscoverModal !== undefined
+    ? externalSetShowDiscoverModal
+    : setInternalShowDiscoverModal;
 
   return (
     <div className="space-y-6 font-sans text-[#29251d]">
@@ -20,7 +46,7 @@ export function CampaignsView() {
           <p className="text-xs text-[#443b2f]">Configure target markets, industry segments, and service offerings</p>
         </div>
         <button
-          onClick={() => setShowNewCampaignModal(true)}
+          onClick={() => setNewCampaignOpen(true)}
           className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-[27px_19px_29px_16px] bg-[#35422d] hover:bg-[#273320] text-[#f5eddf] text-xs font-semibold shadow-xs transition-all w-full sm:w-fit active:scale-[0.98]"
         >
           <Plus size={16} /> New Campaign
@@ -73,7 +99,7 @@ export function CampaignsView() {
               <button
                 onClick={() => {
                   setDiscoverQuery(c.name);
-                  setShowDiscoverModal(true);
+                  setDiscoverOpen(true);
                 }}
                 className="text-[#35422d] hover:text-[#273320] font-semibold flex items-center gap-1"
               >
@@ -84,16 +110,20 @@ export function CampaignsView() {
         ))}
       </div>
 
-      <NewCampaignModal
-        isOpen={showNewCampaignModal}
-        onClose={() => setShowNewCampaignModal(false)}
-      />
+      {externalShowNewCampaignModal === undefined && (
+        <NewCampaignModal
+          isOpen={internalShowNewCampaignModal}
+          onClose={() => setInternalShowNewCampaignModal(false)}
+        />
+      )}
 
-      <DiscoverLeadsModal
-        isOpen={showDiscoverModal}
-        initialQuery={discoverQuery}
-        onClose={() => setShowDiscoverModal(false)}
-      />
+      {externalShowDiscoverModal === undefined && (
+        <DiscoverLeadsModal
+          isOpen={internalShowDiscoverModal}
+          initialQuery={discoverQuery}
+          onClose={() => setInternalShowDiscoverModal(false)}
+        />
+      )}
     </div>
   );
 }

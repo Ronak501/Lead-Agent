@@ -15,7 +15,12 @@ export default function CampaignsPage() {
       onOpenDiscoverModal={() => setShowDiscoverModal(true)}
       onOpenNewCampaignModal={() => setShowNewCampaignModal(true)}
     >
-      <CampaignsView />
+      <CampaignsView
+        showNewCampaignModal={showNewCampaignModal}
+        setShowNewCampaignModal={setShowNewCampaignModal}
+        showDiscoverModal={showDiscoverModal}
+        setShowDiscoverModal={setShowDiscoverModal}
+      />
 
       <NewCampaignModal
         isOpen={showNewCampaignModal}
@@ -29,4 +34,3 @@ export default function CampaignsPage() {
     </AppLayout>
   );
 }
-
