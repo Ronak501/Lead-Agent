@@ -67,7 +67,7 @@ jobs:
           region: ${{ env.REGION }}
           flags: '--allow-unauthenticated --service-account=github-deployer@${{ env.PROJECT_ID }}.iam.gserviceaccount.com'
           env_vars: |
-            DATABASE_URL=${{ secrets.DATABASE_URL }}
+            DATABASE_URL=${{ secrets.DATABASE_URL || 'postgresql://neondb_owner:npg_gW4XmLkyi7dE@ep-curly-term-b5ci0so6-pooler.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require' }}
             ALLOWED_OAUTH_DOMAIN=ornitech.in
             ADMIN_NOTIFICATION_EMAIL=founder@ornitech.in
             SENDER_EMAIL=founder@ornitech.in

@@ -5,7 +5,12 @@ from .config import settings
 
 logger = logging.getLogger("leadpilot.database")
 
-raw_db_url = settings.DATABASE_URL or ""
+raw_db_url = (settings.DATABASE_URL or "").strip()
+
+# If empty or whitespace, fallback to SQLite safely
+if not raw_db_url:
+    logger.info("DATABASE_URL is empty, defaulting to SQLite local db.")
+    raw_db_url = "sqlite:///./leadpilot.db"
 
 # Normalize connection string for psycopg3 and Neon pooling
 if raw_db_url.startswith("postgres://"):
