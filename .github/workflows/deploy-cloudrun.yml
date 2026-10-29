@@ -73,6 +73,7 @@ jobs:
             SENDER_EMAIL=founder@ornitech.in
             SENDER_NAME=Ornitech Solutions
             APP_ENV=production
+            API_CORS_ORIGINS=https://leadpilot-web-822012759095.asia-south1.run.app,http://localhost:3000
 
   # ==========================================
   # 2. DEPLOY FRONTEND (Next.js Web UI)

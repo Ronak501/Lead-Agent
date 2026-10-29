@@ -70,7 +70,8 @@ cors_origins = [origin.strip() for origin in settings.API_CORS_ORIGINS.split(","
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins or ["*"],
+    allow_origins=cors_origins if cors_origins else ["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origin_regex=r"^https://.*\.run\.app$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
