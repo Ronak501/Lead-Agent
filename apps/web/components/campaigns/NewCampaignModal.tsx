@@ -169,20 +169,25 @@ export function NewCampaignModal({ isOpen, onClose }: NewCampaignModalProps) {
           </div>
         </div>
 
-        <div className="pt-3 border-t border-[#ddd5c3] flex flex-col-reverse sm:flex-row justify-end gap-2 text-xs">
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-full sm:w-auto px-4 py-2 rounded-[20px_14px_18px_12px] border border-[#ddd5c3] bg-[#eee6d6] text-[#443b2f] hover:bg-[#ddd5c3] text-center font-medium"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            className="w-full sm:w-auto px-4 py-2 rounded-[27px_19px_29px_16px] bg-[#35422d] hover:bg-[#273320] text-[#f5eddf] font-semibold text-center active:scale-[0.98]"
-          >
-            Create Campaign
-          </button>
+        <div className="pt-3 border-t border-[#ddd5c3] flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+          <p className="text-[11px] text-[#694737] italic">
+            🤖 Fully Autonomous: AI will discover leads, audit websites &amp; dispatch cold emails immediately.
+          </p>
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-full sm:w-auto px-4 py-2 rounded-[20px_14px_18px_12px] border border-[#ddd5c3] bg-[#eee6d6] text-[#443b2f] hover:bg-[#ddd5c3] text-center font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="w-full sm:w-auto px-5 py-2 rounded-[27px_19px_29px_16px] bg-[#35422d] hover:bg-[#273320] text-[#f5eddf] font-semibold text-center active:scale-[0.98] shadow-sm flex items-center justify-center gap-1.5"
+            >
+              <span>🚀</span> Launch Autonomous Campaign
+            </button>
+          </div>
         </div>
       </form>
     </div>

@@ -124,7 +124,7 @@ def list_campaigns(db: Session = Depends(get_db)):
 
 
 @router.post("/campaigns", response_model=CampaignOut, status_code=status.HTTP_201_CREATED)
-def create_campaign(payload: CampaignCreate, db: Session = Depends(get_db)):
+async def create_campaign(payload: CampaignCreate, db: Session = Depends(get_db)):
     ws_id = get_current_workspace_id()
     campaign = Campaign(
         workspace_id=ws_id,
@@ -146,6 +146,25 @@ def create_campaign(payload: CampaignCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(campaign)
 
+    # 100% Autonomous Pipeline Trigger:
+    # Immediately discover leads, run website audits, generate grounded pitches,
+    # auto-sign with SHA-256, and dispatch outbox cold emails.
+    try:
+        limit = min(5, payload.max_lead_count or 5)
+        await AutomationEngine.run_autonomous_pipeline_for_campaign(campaign.id, db, limit=limit)
+        db.refresh(campaign)
+    except Exception as exc:
+        print(f"[create_campaign] Autonomous pipeline error: {exc}")
+
+    leads_count = db.query(func.count(Lead.id)).filter_by(campaign_id=campaign.id).scalar() or 0
+    drafts_count = (
+        db.query(func.count(EmailDraft.id))
+        .join(Lead, Lead.id == EmailDraft.lead_id)
+        .filter(Lead.campaign_id == campaign.id)
+        .scalar()
+        or 0
+    )
+
     return CampaignOut(
         id=campaign.id,
         workspace_id=campaign.workspace_id,
@@ -163,8 +182,8 @@ def create_campaign(payload: CampaignCreate, db: Session = Depends(get_db)):
         notes=campaign.notes or "",
         status=campaign.status,
         created_at=campaign.created_at,
-        leads_count=0,
-        drafts_count=0,
+        leads_count=leads_count,
+        drafts_count=drafts_count,
     )
 
 

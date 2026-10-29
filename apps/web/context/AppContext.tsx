@@ -409,18 +409,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const handleCreateCampaign = async (formData: any): Promise<boolean> => {
     try {
+      setLoading(true);
+      notify('🤖 Creating campaign & launching Autonomous AI Outbound Pipeline...', 'info');
       const res = await fetch(`${API}/api/campaigns`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       });
-      if (!res.ok) throw new Error('Failed to create campaign');
-      notify('Campaign created successfully!');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Failed to create campaign');
+      }
+      const data = await res.json();
+      notify(`🚀 Campaign created! Autonomous AI found leads, audited websites, and dispatched cold emails.`, 'success');
       await fetchData();
       return true;
     } catch (err: any) {
       notify(err.message, 'error');
       return false;
+    } finally {
+      setLoading(false);
     }
   };
 

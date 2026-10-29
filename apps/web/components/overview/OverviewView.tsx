@@ -52,13 +52,13 @@ export function OverviewView({ onOpenDiscoverModal, onOpenNewCampaignModal }: Ov
 
         <div className="space-y-3 max-w-2xl relative z-10">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#35422d]/10 border border-[#35422d]/25 text-[#35422d] text-xs font-semibold">
-            <Sparkles size={13} className="text-[#35422d]" /> Evidence-Based B2B Cold Outreach
+            <Sparkles size={13} className="text-[#35422d]" /> 100% Autonomous B2B Cold Outreach
           </div>
           <h1 className="font-serif text-2xl sm:text-3xl md:text-4xl font-normal tracking-tight text-[#29251d] leading-tight">
-            Find Real Opportunities. Verify Evidence. Approve Every Email.
+            Find Prospects. Audit Sites. Dispatch Cold Emails Automatically.
           </h1>
           <p className="text-sm text-[#443b2f] leading-relaxed max-w-xl">
-            LeadPilot AI checks real public websites for performance, mobile usability, and tech stack gaps, assembling fact-grounded pitches that require your explicit approval before sending.
+            LeadPilot AI automatically discovers qualified prospects, audits their live domains for tech gaps, composes evidence-grounded pitches, and dispatches emails directly. You only check in when high-value replies arrive!
           </p>
         </div>
 
@@ -113,7 +113,7 @@ export function OverviewView({ onOpenDiscoverModal, onOpenNewCampaignModal }: Ov
               </div>
               <div className="text-sm font-medium text-[#f5eddf]/90 mt-1 font-serif">Pending Sign-off Queue</div>
               <p className="text-xs text-[#f5eddf]/75 mt-1 leading-relaxed">
-                Individual human approval required before cold emails can dispatch.
+                Auto-pilot auto-signs &amp; dispatches; manual review is available anytime for verification.
               </p>
             </div>
             <div className="pt-2">
