@@ -24,8 +24,21 @@ wheels/
 *.sqlite3
 leadpilot.db
 
-# Virtual Environment
+# Credentials and Secrets
+*.pem
+*.key
+*key*.json
+gcp-key.json
+credentials.json
+service-account*.json
+client_secret*.json
+
+# Virtual Environment & Secrets
 .env
+.env.*
+**/.env
+**/.env.*
+*.env
 .env.local
 .env.*.local
 venv/
