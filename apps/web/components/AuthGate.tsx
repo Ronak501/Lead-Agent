@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Lock, AlertCircle, ArrowRight, Building2, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, Lock, AlertCircle, Building2, CheckCircle2 } from 'lucide-react';
 
 interface AuthGateProps {
   apiBaseUrl: string;
@@ -14,7 +14,7 @@ export function AuthGate({ apiBaseUrl, onAuthenticated }: AuthGateProps) {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Initialize Google Sign-In if available
+  // Initialize Google Sign-In
   useEffect(() => {
     const handleGoogleCredentialResponse = async (response: any) => {
       try {
@@ -28,7 +28,7 @@ export function AuthGate({ apiBaseUrl, onAuthenticated }: AuthGateProps) {
 
         const data = await res.json();
         if (!res.ok) {
-          throw new Error(data.detail || 'Access Denied: Only @ornitech.in accounts are permitted.');
+          throw new Error(data.detail || 'Access Denied: Only @ornitech.in or authorized admin accounts are permitted.');
         }
 
         localStorage.setItem('ornitech_token', data.access_token);
@@ -46,7 +46,6 @@ export function AuthGate({ apiBaseUrl, onAuthenticated }: AuthGateProps) {
         (window as any).google.accounts.id.initialize({
           client_id: '822012759095-hs71lski4v2itkf2ooqs5hdmuvnjprk7.apps.googleusercontent.com',
           callback: handleGoogleCredentialResponse,
-          hosted_domain: 'ornitech.in',
         });
 
         const btnContainer = document.getElementById('googleSignInBtn');
@@ -70,8 +69,10 @@ export function AuthGate({ apiBaseUrl, onAuthenticated }: AuthGateProps) {
     setErrorMessage(null);
 
     const cleanEmail = email.trim().toLowerCase();
-    if (!cleanEmail.endsWith('@ornitech.in')) {
-      setErrorMessage('⛔ Access Denied: Only @ornitech.in company accounts are authorized.');
+    const isWhitelistedAdmin = cleanEmail === 'ronaktalaviya51@gmail.com';
+
+    if (!cleanEmail.endsWith('@ornitech.in') && !isWhitelistedAdmin) {
+      setErrorMessage('⛔ Access Denied: Only @ornitech.in company accounts or authorized admin (ronaktalaviya51@gmail.com) are permitted.');
       return;
     }
 
@@ -111,7 +112,7 @@ export function AuthGate({ apiBaseUrl, onAuthenticated }: AuthGateProps) {
         {/* Brand Header */}
         <div className="text-center space-y-2">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-400 text-xs font-semibold">
-            <ShieldCheck size={14} /> Domain Protected: @ornitech.in
+            <ShieldCheck size={14} /> Domain Protected: @ornitech.in & Admin
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-white flex items-center justify-center gap-2">
             <Building2 className="text-violet-400" size={24} /> Ornitech Solutions
@@ -136,7 +137,7 @@ export function AuthGate({ apiBaseUrl, onAuthenticated }: AuthGateProps) {
           <div className="relative flex py-2 items-center">
             <div className="flex-grow border-t border-zinc-800" />
             <span className="flex-shrink mx-3 text-[11px] uppercase tracking-wider text-zinc-500 font-medium">
-              or sign in with corporate email
+              or sign in with authorized email
             </span>
             <div className="flex-grow border-t border-zinc-800" />
           </div>
@@ -156,11 +157,11 @@ export function AuthGate({ apiBaseUrl, onAuthenticated }: AuthGateProps) {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-zinc-300 block">Company Email (@ornitech.in)</label>
+            <label className="text-xs font-semibold text-zinc-300 block">Email Address (@ornitech.in or Admin)</label>
             <input
               type="email"
               required
-              placeholder="yourname@ornitech.in"
+              placeholder="yourname@ornitech.in or ronaktalaviya51@gmail.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-200 text-xs placeholder:text-zinc-600 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-all"
@@ -177,7 +178,7 @@ export function AuthGate({ apiBaseUrl, onAuthenticated }: AuthGateProps) {
             ) : (
               <Lock size={14} />
             )}
-            Sign In with @ornitech.in
+            Sign In to LeadPilot
           </button>
         </form>
 
@@ -185,11 +186,10 @@ export function AuthGate({ apiBaseUrl, onAuthenticated }: AuthGateProps) {
         <div className="pt-2 border-t border-zinc-800/80 text-center">
           <p className="text-[11px] text-zinc-500 flex items-center justify-center gap-1.5">
             <CheckCircle2 size={12} className="text-emerald-400" />
-            Internal tool strictly reserved for Ornitech Solutions team members.
+            Internal tool strictly reserved for Ornitech Solutions team & Ronak Talaviya.
           </p>
         </div>
       </div>
     </div>
   );
 }
-

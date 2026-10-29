@@ -19,9 +19,22 @@ security = HTTPBearer(auto_error=False)
 JWT_ALGORITHM = "HS256"
 
 
+def is_authorized_email(email: str, hosted_domain: str = "") -> bool:
+    """Checks if email belongs to @ornitech.in or is an explicitly whitelisted super-admin email."""
+    email_clean = (email or "").strip().lower()
+    allowed_domain = settings.ALLOWED_OAUTH_DOMAIN.strip().lower()
+    whitelisted = [e.strip().lower() for e in settings.ADMIN_WHITELIST_EMAILS.split(",") if e.strip()]
+    
+    if email_clean in whitelisted:
+        return True
+    if email_clean.endswith(f"@{allowed_domain}") or hosted_domain.lower() == allowed_domain:
+        return True
+    return False
+
+
 def verify_google_credential(credential_token: str, db: Session) -> dict:
     """
-    Verifies Google OAuth ID Token and strictly enforces @ornitech.in domain restriction (Approach 2).
+    Verifies Google OAuth ID Token and enforces @ornitech.in domain restriction or admin whitelist.
     """
     try:
         # Verify with Google's public keys
@@ -37,13 +50,13 @@ def verify_google_credential(credential_token: str, db: Session) -> dict:
         full_name = id_info.get("name") or email.split("@")[0]
         picture = id_info.get("picture")
 
-        # Approach 2: Strict domain enforcement for Ornitech
+        # Domain & Admin Whitelist Authorization Check
         allowed_domain = settings.ALLOWED_OAUTH_DOMAIN.strip().lower()
-        if not (email.endswith(f"@{allowed_domain}") or hosted_domain == allowed_domain):
-            logger.warning(f"Forbidden sign-in attempt from non-company email: {email}")
+        if not is_authorized_email(email, hosted_domain):
+            logger.warning(f"Forbidden sign-in attempt from unauthorized email: {email}")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Access Denied: Only @{allowed_domain} company accounts are authorized to access LeadPilot.",
+                detail=f"Access Denied: Only @{allowed_domain} accounts or authorized admin ({settings.ADMIN_WHITELIST_EMAILS}) are permitted.",
             )
 
         # Upsert user record
@@ -67,7 +80,7 @@ def verify_google_credential(credential_token: str, db: Session) -> dict:
                 member = WorkspaceMember(
                     workspace_id=ws.id,
                     user_id=user.id,
-                    role="admin" if "founder" in email or "admin" in email else "member",
+                    role="admin" if ("founder" in email or "admin" in email or email in settings.ADMIN_WHITELIST_EMAILS) else "member",
                 )
                 db.add(member)
         else:
@@ -84,6 +97,7 @@ def verify_google_credential(credential_token: str, db: Session) -> dict:
             "picture": picture,
             "exp": datetime.now(timezone.utc) + timedelta(days=7),
             "domain": allowed_domain,
+            "is_admin": True if (email in settings.ADMIN_WHITELIST_EMAILS or "founder" in email) else False,
         }
         token = jwt.encode(payload, settings.JWT_SECRET, algorithm=JWT_ALGORITHM)
 
@@ -96,6 +110,7 @@ def verify_google_credential(credential_token: str, db: Session) -> dict:
                 "full_name": user.full_name,
                 "picture": picture,
                 "domain": allowed_domain,
+                "is_admin": payload["is_admin"],
             },
         }
 
@@ -117,16 +132,16 @@ def verify_google_credential(credential_token: str, db: Session) -> dict:
 
 def verify_ornitech_email_login(email: str, name: Optional[str], db: Session) -> dict:
     """
-    Direct login strictly requiring an @ornitech.in corporate email address.
+    Direct login strictly requiring an @ornitech.in corporate email address or whitelisted admin.
     """
     email_clean = (email or "").strip().lower()
     allowed_domain = settings.ALLOWED_OAUTH_DOMAIN.strip().lower()
 
-    if not email_clean.endswith(f"@{allowed_domain}"):
-        logger.warning(f"Rejected sign-in attempt for non-company email: {email_clean}")
+    if not is_authorized_email(email_clean):
+        logger.warning(f"Rejected sign-in attempt for unauthorized email: {email_clean}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Access Denied: Only @{allowed_domain} company accounts are authorized.",
+            detail=f"Access Denied: Only @{allowed_domain} company accounts or authorized admin are permitted.",
         )
 
     user = db.query(User).filter_by(email=email_clean).first()
@@ -145,7 +160,7 @@ def verify_ornitech_email_login(email: str, name: Optional[str], db: Session) ->
             member = WorkspaceMember(
                 workspace_id=ws.id,
                 user_id=user.id,
-                role="admin" if ("founder" in email_clean or "admin" in email_clean) else "member",
+                role="admin" if ("founder" in email_clean or "admin" in email_clean or email_clean in settings.ADMIN_WHITELIST_EMAILS) else "member",
             )
             db.add(member)
         db.commit()
@@ -156,6 +171,7 @@ def verify_ornitech_email_login(email: str, name: Optional[str], db: Session) ->
         "full_name": user.full_name,
         "exp": datetime.now(timezone.utc) + timedelta(days=7),
         "domain": allowed_domain,
+        "is_admin": True if (email_clean in settings.ADMIN_WHITELIST_EMAILS or "founder" in email_clean) else False,
     }
     token = jwt.encode(payload, settings.JWT_SECRET, algorithm=JWT_ALGORITHM)
 
@@ -167,6 +183,7 @@ def verify_ornitech_email_login(email: str, name: Optional[str], db: Session) ->
             "email": user.email,
             "full_name": user.full_name,
             "domain": allowed_domain,
+            "is_admin": payload["is_admin"],
         },
     }
 
@@ -176,22 +193,20 @@ def get_current_user(
     db: Session = Depends(get_db),
 ) -> Optional[User]:
     """
-    Validates JWT token and ensures requester belongs to @ornitech.in.
+    Validates JWT token and ensures requester belongs to @ornitech.in or is whitelisted admin.
     """
     if not credentials:
-        # If no credentials provided, return None or raise 401
         return None
 
     token = credentials.credentials
     try:
         payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[JWT_ALGORITHM])
         email = payload.get("email", "")
-        allowed_domain = settings.ALLOWED_OAUTH_DOMAIN.strip().lower()
 
-        if not email.endswith(f"@{allowed_domain}"):
+        if not is_authorized_email(email):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Access restricted to @{allowed_domain} users only",
+                detail="Access restricted to authorized users only",
             )
 
         user = db.query(User).filter_by(id=payload.get("sub")).first()

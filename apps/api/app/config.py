@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     SENDER_COMPANY: str = "Founder, Ornitech Solutions"
     SENDER_WEBSITE: str = "https://ornitech.in"
     ALLOWED_OAUTH_DOMAIN: str = "ornitech.in"
+    ADMIN_WHITELIST_EMAILS: str = "ronaktalaviya51@gmail.com"
     JWT_SECRET: str = "ornitech-lead-agent-secret-key-change-in-prod"
     ADMIN_NOTIFICATION_EMAIL: str = "founder@ornitech.in"
     SMTP_HOST: str = "smtp.gmail.com"

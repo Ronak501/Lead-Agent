@@ -274,7 +274,7 @@ export default function Home() {
       const stored = localStorage.getItem('ornitech_user');
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (parsed?.email && (parsed.email.endsWith('@ornitech.in') || parsed.domain === 'ornitech.in')) {
+        if (parsed?.email && (parsed.email.endsWith('@ornitech.in') || parsed.email === 'ronaktalaviya51@gmail.com' || parsed.domain === 'ornitech.in')) {
           setCurrentUser(parsed);
         } else {
           localStorage.removeItem('ornitech_user');
