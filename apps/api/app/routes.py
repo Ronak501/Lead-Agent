@@ -4,12 +4,12 @@ from datetime import datetime, timezone
 import json
 import uuid
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from .config import settings
-from .database import get_db
+from .database import get_db, SessionLocal
 from .models import (
     Workspace,
     User,
@@ -88,16 +88,28 @@ def get_current_workspace_id() -> str:
 def list_campaigns(db: Session = Depends(get_db)):
     ws_id = get_current_workspace_id()
     campaigns = db.query(Campaign).filter_by(workspace_id=ws_id).order_by(Campaign.created_at.desc()).all()
+    if not campaigns:
+        return []
+
+    campaign_ids = [c.id for c in campaigns]
+
+    # Pre-aggregate counts in single batch queries to eliminate N+1 connection overhead
+    lead_counts = dict(
+        db.query(Lead.campaign_id, func.count(Lead.id))
+        .filter(Lead.campaign_id.in_(campaign_ids))
+        .group_by(Lead.campaign_id)
+        .all()
+    )
+    draft_counts = dict(
+        db.query(Lead.campaign_id, func.count(EmailDraft.id))
+        .join(EmailDraft, EmailDraft.lead_id == Lead.id)
+        .filter(Lead.campaign_id.in_(campaign_ids))
+        .group_by(Lead.campaign_id)
+        .all()
+    )
+
     out = []
     for c in campaigns:
-        leads_count = db.query(func.count(Lead.id)).filter_by(campaign_id=c.id).scalar() or 0
-        drafts_count = (
-            db.query(func.count(EmailDraft.id))
-            .join(Lead, Lead.id == EmailDraft.lead_id)
-            .filter(Lead.campaign_id == c.id)
-            .scalar()
-            or 0
-        )
         out.append(
             CampaignOut(
                 id=c.id,
@@ -116,15 +128,19 @@ def list_campaigns(db: Session = Depends(get_db)):
                 notes=c.notes or "",
                 status=c.status,
                 created_at=c.created_at,
-                leads_count=leads_count,
-                drafts_count=drafts_count,
+                leads_count=lead_counts.get(c.id, 0),
+                drafts_count=draft_counts.get(c.id, 0),
             )
         )
     return out
 
 
 @router.post("/campaigns", response_model=CampaignOut, status_code=status.HTTP_201_CREATED)
-async def create_campaign(payload: CampaignCreate, db: Session = Depends(get_db)):
+async def create_campaign(
+    payload: CampaignCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
     ws_id = get_current_workspace_id()
     campaign = Campaign(
         workspace_id=ws_id,
@@ -147,23 +163,19 @@ async def create_campaign(payload: CampaignCreate, db: Session = Depends(get_db)
     db.refresh(campaign)
 
     # 100% Autonomous Pipeline Trigger:
-    # Immediately discover leads, run website audits, generate grounded pitches,
-    # auto-sign with SHA-256, and dispatch outbox cold emails.
-    try:
-        limit = min(5, payload.max_lead_count or 5)
-        await AutomationEngine.run_autonomous_pipeline_for_campaign(campaign.id, db, limit=limit)
-        db.refresh(campaign)
-    except Exception as exc:
-        print(f"[create_campaign] Autonomous pipeline error: {exc}")
+    # Run in BackgroundTask with an isolated session so the HTTP request returns immediately
+    # and does NOT hold open a DB connection during external website audits & AI pitch generation.
+    async def run_pipeline_worker(campaign_id: str, lead_limit: int):
+        worker_db = SessionLocal()
+        try:
+            await AutomationEngine.run_autonomous_pipeline_for_campaign(campaign_id, worker_db, limit=lead_limit)
+        except Exception as exc:
+            print(f"[run_pipeline_worker] Autonomous pipeline error: {exc}")
+        finally:
+            worker_db.close()
 
-    leads_count = db.query(func.count(Lead.id)).filter_by(campaign_id=campaign.id).scalar() or 0
-    drafts_count = (
-        db.query(func.count(EmailDraft.id))
-        .join(Lead, Lead.id == EmailDraft.lead_id)
-        .filter(Lead.campaign_id == campaign.id)
-        .scalar()
-        or 0
-    )
+    limit = min(5, payload.max_lead_count or 5)
+    background_tasks.add_task(run_pipeline_worker, campaign.id, limit)
 
     return CampaignOut(
         id=campaign.id,
@@ -182,8 +194,8 @@ async def create_campaign(payload: CampaignCreate, db: Session = Depends(get_db)
         notes=campaign.notes or "",
         status=campaign.status,
         created_at=campaign.created_at,
-        leads_count=leads_count,
-        drafts_count=drafts_count,
+        leads_count=0,
+        drafts_count=0,
     )
 
 
