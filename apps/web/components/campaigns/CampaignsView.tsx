@@ -54,7 +54,24 @@ export function CampaignsView({
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {campaigns.map((c) => (
+        {campaigns.length === 0 ? (
+          <div className="col-span-full rounded-[26px_18px_24px_20px] border border-dashed border-[#ddd5c3] bg-[#f5eddf]/60 p-12 text-center space-y-3">
+            <div className="p-3 w-12 h-12 mx-auto rounded-full bg-[#eee6d6] text-[#694737] flex items-center justify-center">
+              <Target size={24} />
+            </div>
+            <h3 className="font-serif font-medium text-lg text-[#29251d]">No campaigns created yet</h3>
+            <p className="text-xs text-[#443b2f] max-w-md mx-auto">
+              Create your first campaign to define target industries, target markets, and begin autonomous lead discovery.
+            </p>
+            <button
+              onClick={() => setNewCampaignOpen(true)}
+              className="mt-2 inline-flex items-center gap-2 px-4 py-2.5 rounded-[27px_19px_29px_16px] bg-[#35422d] hover:bg-[#273320] text-[#f5eddf] text-xs font-semibold shadow-xs transition-all cursor-pointer"
+            >
+              <Plus size={16} /> Create Campaign
+            </button>
+          </div>
+        ) : (
+          campaigns.map((c) => (
           <div
             key={c.id}
             className="rounded-[26px_18px_24px_20px] border border-[#ddd5c3] bg-[#f5eddf] p-5 space-y-4 hover:border-[#ad7d62] shadow-2xs transition-all"
@@ -107,7 +124,7 @@ export function CampaignsView({
               </button>
             </div>
           </div>
-        ))}
+        )))}
       </div>
 
       {externalShowNewCampaignModal === undefined && (
