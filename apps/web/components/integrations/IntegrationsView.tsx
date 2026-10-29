@@ -18,8 +18,8 @@ export function IntegrationsView() {
       } else {
         notify(`${providerName}: ${data.detail || 'Test failed'}`, 'error');
       }
-    } catch {
-      notify(`${providerName} connection tested: OK`, 'success');
+    } catch (err: any) {
+      notify(`Connection error testing ${providerName}: ${err.message || 'Network request failed'}`, 'error');
     }
   };
 

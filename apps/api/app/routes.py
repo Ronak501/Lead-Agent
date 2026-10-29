@@ -3,7 +3,10 @@ import io
 from datetime import datetime, timezone
 import json
 import uuid
+import smtplib
+import imaplib
 from typing import Optional
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -60,7 +63,12 @@ from .schemas import (
     OrnitechLoginRequest,
     AutomationRunResponse,
 )
-from .providers.discovery import CompanyDiscoveryProvider, ProviderNotConfiguredException
+from .providers.discovery import (
+    CompanyDiscoveryProvider,
+    ProviderNotConfiguredException,
+    ApiRateLimitException,
+    ApiAuthenticationException,
+)
 from .providers.verification import EmailVerificationProvider
 from .providers.website_analyzer import WebsiteAuditProvider
 from .providers.ai_drafter import EmailDraftProvider
@@ -486,6 +494,10 @@ async def discover_leads(payload: LeadDiscoveryRequest, db: Session = Depends(ge
             service_target=payload.service_target,
             limit=payload.limit,
         )
+    except ApiRateLimitException as exc:
+        raise HTTPException(status_code=429, detail=str(exc))
+    except ApiAuthenticationException as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     except ProviderNotConfiguredException as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -1529,6 +1541,18 @@ def list_integrations(db: Session = Depends(get_db)):
             status_message="Hunter Email Verifier active" if settings.HUNTER_API_KEY else "Using RFC 5322 & DNS syntax validator",
         ),
         IntegrationStatusOut(
+            provider_name="smtp",
+            is_active=bool(settings.SMTP_HOST and settings.SMTP_USER and settings.SMTP_PASS),
+            is_configured=bool(settings.SMTP_USER and settings.SMTP_PASS),
+            status_message=f"Configured ({settings.SMTP_USER} via {settings.SMTP_HOST}:{settings.SMTP_PORT})" if (settings.SMTP_USER and settings.SMTP_PASS) else "SMTP outbound unconfigured (add SMTP_USER and SMTP_PASS)",
+        ),
+        IntegrationStatusOut(
+            provider_name="imap",
+            is_active=bool(settings.IMAP_SERVER and settings.IMAP_USER and settings.IMAP_PASS),
+            is_configured=bool(settings.IMAP_USER and settings.IMAP_PASS),
+            status_message=f"Configured ({settings.IMAP_USER} via {settings.IMAP_SERVER}:{settings.IMAP_PORT})" if (settings.IMAP_USER and settings.IMAP_PASS) else "IMAP inbox reader unconfigured (add IMAP_USER and IMAP_PASS)",
+        ),
+        IntegrationStatusOut(
             provider_name="gmail",
             is_active=has_gmail_oauth or bool(settings.GOOGLE_CLIENT_ID),
             is_configured=bool(settings.GOOGLE_CLIENT_ID),
@@ -1550,63 +1574,137 @@ async def test_integration(provider_name: str):
 
     if p == "groq":
         if not settings.GROQ_API_KEY:
-            raise HTTPException(status_code=400, detail="GROQ_API_KEY is not configured in .env.")
+            raise HTTPException(status_code=400, detail="Missing required configuration: 'GROQ_API_KEY' is not set in your .env file.")
         try:
-            async with httpx.AsyncClient(timeout=6.0) as client:
+            async with httpx.AsyncClient(timeout=8.0) as client:
                 res = await client.get(
                     "https://api.groq.com/openai/v1/models",
                     headers={"Authorization": f"Bearer {settings.GROQ_API_KEY}"},
                 )
                 if res.status_code == 200:
                     return {"status": "ok", "provider": "groq", "detail": f"Connected to Groq LPU API. Active model: {settings.GROQ_MODEL}"}
+                elif res.status_code == 429:
+                    raise HTTPException(status_code=429, detail=f"API Rate Limit or Quota Reached for key 'GROQ_API_KEY': {res.text}")
+                elif res.status_code in (401, 403):
+                    raise HTTPException(status_code=400, detail=f"Authentication Failed for key 'GROQ_API_KEY': Invalid or unauthorized API key (HTTP {res.status_code}).")
                 else:
-                    raise HTTPException(status_code=400, detail=f"Groq API returned HTTP {res.status_code}: {res.text}")
+                    raise HTTPException(status_code=400, detail=f"Groq API error for key 'GROQ_API_KEY' (HTTP {res.status_code}): {res.text}")
+        except HTTPException:
+            raise
         except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Groq API test failed: {str(e)}")
+            raise HTTPException(status_code=502, detail=f"Groq API connection failed: {str(e)}")
 
     elif p == "apollo":
         if not settings.APOLLO_API_KEY:
-            raise HTTPException(status_code=400, detail="APOLLO_API_KEY is not configured in .env.")
+            raise HTTPException(status_code=400, detail="Missing required configuration: 'APOLLO_API_KEY' is not set in your .env file.")
         try:
-            async with httpx.AsyncClient(timeout=6.0) as client:
+            async with httpx.AsyncClient(timeout=8.0) as client:
                 res = await client.post(
                     "https://api.apollo.io/v1/organizations/search",
                     headers={"Content-Type": "application/json", "Cache-Control": "no-cache"},
                     json={"api_key": settings.APOLLO_API_KEY, "q_organization_name": "Google", "page": 1, "per_page": 1},
                 )
                 if res.status_code == 200:
-                    return {"status": "ok", "provider": "apollo", "detail": "Apollo.io API connected and authenticated."}
-                elif res.status_code == 403:
-                    return {"status": "ok", "provider": "apollo", "detail": "Apollo key active (Rate limit or search permission restricted, fallback index enabled)."}
+                    return {"status": "ok", "provider": "apollo", "detail": "Apollo.io API connected and authenticated successfully."}
+                elif res.status_code == 429:
+                    raise HTTPException(status_code=429, detail=f"API Rate Limit or Quota Reached for key 'APOLLO_API_KEY': {res.text}")
+                elif res.status_code in (401, 403):
+                    raise HTTPException(status_code=400, detail=f"Authentication Failed for key 'APOLLO_API_KEY': Invalid or restricted Apollo API key (HTTP {res.status_code}): {res.text}")
                 else:
-                    return {"status": "ok", "provider": "apollo", "detail": f"Apollo key verified (HTTP {res.status_code})."}
+                    raise HTTPException(status_code=400, detail=f"Apollo API error for key 'APOLLO_API_KEY' (HTTP {res.status_code}): {res.text}")
+        except HTTPException:
+            raise
         except Exception as e:
-            return {"status": "ok", "provider": "apollo", "detail": f"Apollo key configured (Diagnostic response: {str(e)[:60]})."}
+            raise HTTPException(status_code=502, detail=f"Apollo API connection failed: {str(e)}")
 
     elif p == "hunter":
         if not settings.HUNTER_API_KEY:
-            raise HTTPException(status_code=400, detail="HUNTER_API_KEY is not configured in .env.")
+            raise HTTPException(status_code=400, detail="Missing required configuration: 'HUNTER_API_KEY' is not set in your .env file.")
         try:
-            async with httpx.AsyncClient(timeout=6.0) as client:
+            async with httpx.AsyncClient(timeout=8.0) as client:
                 res = await client.get(f"https://api.hunter.io/v2/account?api_key={settings.HUNTER_API_KEY}")
                 if res.status_code == 200:
                     data = res.json()
                     email = data.get("data", {}).get("email", "connected")
                     return {"status": "ok", "provider": "hunter", "detail": f"Hunter.io connected for account: {email}"}
+                elif res.status_code == 429:
+                    raise HTTPException(status_code=429, detail=f"API Rate Limit or Quota Reached for key 'HUNTER_API_KEY': {res.text}")
+                elif res.status_code in (401, 403):
+                    raise HTTPException(status_code=400, detail=f"Authentication Failed for key 'HUNTER_API_KEY': Invalid Hunter API key (HTTP {res.status_code}).")
                 else:
-                    return {"status": "ok", "provider": "hunter", "detail": f"Hunter key configured (HTTP {res.status_code})."}
+                    raise HTTPException(status_code=400, detail=f"Hunter API error for key 'HUNTER_API_KEY' (HTTP {res.status_code}): {res.text}")
+        except HTTPException:
+            raise
         except Exception as e:
-            return {"status": "ok", "provider": "hunter", "detail": f"Hunter key configured: {str(e)[:60]}"}
-
-    elif p == "gmail":
-        if not settings.GOOGLE_CLIENT_ID:
-            raise HTTPException(status_code=400, detail="GOOGLE_CLIENT_ID is not configured in .env.")
-        return {"status": "ok", "provider": "gmail", "detail": "Google OAuth credentials configured and ready for authorization."}
+            raise HTTPException(status_code=502, detail=f"Hunter API connection failed: {str(e)}")
 
     elif p == "gemini":
         if not settings.GEMINI_API_KEY:
-            raise HTTPException(status_code=400, detail="GEMINI_API_KEY is optional and not set.")
-        return {"status": "ok", "provider": "gemini", "detail": "Gemini API key configured."}
+            raise HTTPException(status_code=400, detail="Missing configuration: 'GEMINI_API_KEY' is not configured in .env.")
+        try:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                res = await client.get(f"https://generativelanguage.googleapis.com/v1beta/models?key={settings.GEMINI_API_KEY}")
+                if res.status_code == 200:
+                    return {"status": "ok", "provider": "gemini", "detail": "Gemini API key verified and connected successfully."}
+                elif res.status_code == 429:
+                    raise HTTPException(status_code=429, detail=f"API Rate Limit or Quota Reached for key 'GEMINI_API_KEY': {res.text}")
+                elif res.status_code in (400, 401, 403):
+                    raise HTTPException(status_code=400, detail=f"Authentication Failed for key 'GEMINI_API_KEY': Invalid or restricted key (HTTP {res.status_code}).")
+                else:
+                    raise HTTPException(status_code=400, detail=f"Gemini API error for key 'GEMINI_API_KEY' (HTTP {res.status_code}): {res.text}")
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"Gemini API connection failed: {str(e)}")
+
+    elif p == "smtp":
+        if not (settings.SMTP_USER and settings.SMTP_PASS):
+            raise HTTPException(status_code=400, detail="Missing required configuration: 'SMTP_USER' or 'SMTP_PASS' is not set in your .env file.")
+        try:
+            server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=8.0)
+            if settings.SMTP_USE_TLS:
+                server.starttls()
+            server.login(settings.SMTP_USER, settings.SMTP_PASS)
+            server.quit()
+            return {"status": "ok", "provider": "smtp", "detail": f"SMTP handshake and login successful on {settings.SMTP_HOST}:{settings.SMTP_PORT} as {settings.SMTP_USER}."}
+        except smtplib.SMTPAuthenticationError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"SMTP Authentication Failed for 'SMTP_USER' ({settings.SMTP_USER}): Bad credentials. If using Gmail, you must generate a 16-character Google App Password (not your normal Google account password) at https://myaccount.google.com/apppasswords"
+            )
+        except (smtplib.SMTPConnectError, TimeoutError, OSError) as conn_err:
+            raise HTTPException(
+                status_code=502,
+                detail=f"SMTP Connection Failed to {settings.SMTP_HOST}:{settings.SMTP_PORT}: {str(conn_err)}"
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"SMTP error: {str(e)}")
+
+    elif p == "imap":
+        if not (settings.IMAP_USER and settings.IMAP_PASS):
+            raise HTTPException(status_code=400, detail="Missing required configuration: 'IMAP_USER' or 'IMAP_PASS' is not set in your .env file.")
+        try:
+            mail = imaplib.IMAP4_SSL(settings.IMAP_SERVER, settings.IMAP_PORT)
+            mail.login(settings.IMAP_USER, settings.IMAP_PASS)
+            mail.logout()
+            return {"status": "ok", "provider": "imap", "detail": f"IMAP connection and login successful on {settings.IMAP_SERVER}:{settings.IMAP_PORT} as {settings.IMAP_USER}."}
+        except imaplib.IMAP4.error as imap_err:
+            raise HTTPException(
+                status_code=400,
+                detail=f"IMAP Authentication Failed for 'IMAP_USER' ({settings.IMAP_USER}): {str(imap_err)}. For Gmail, verify IMAP is enabled and use a 16-character Google App Password."
+            )
+        except (TimeoutError, OSError) as conn_err:
+            raise HTTPException(
+                status_code=502,
+                detail=f"IMAP Connection Failed to {settings.IMAP_SERVER}:{settings.IMAP_PORT}: {str(conn_err)}"
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"IMAP error: {str(e)}")
+
+    elif p == "gmail":
+        if not settings.GOOGLE_CLIENT_ID:
+            raise HTTPException(status_code=400, detail="Missing required configuration: 'GOOGLE_CLIENT_ID' is not configured in .env.")
+        return {"status": "ok", "provider": "gmail", "detail": "Google OAuth credentials configured and ready for authorization."}
 
     raise HTTPException(status_code=404, detail=f"Unknown provider '{provider_name}'.")
 

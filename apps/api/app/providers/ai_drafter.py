@@ -73,6 +73,7 @@ Respond ONLY with a JSON object in this exact schema:
   "confidence": 0.92
 }}"""
 
+        diagnostics = []
         # 1. Primary Strategy: Groq API (Ultra-fast LPU inference with resilient modern model fallback)
         if self.groq_key and self.groq_key != "mock_key":
             preferred_model = self.groq_model or "llama-3.3-70b-versatile"
@@ -121,6 +122,14 @@ Respond ONLY with a JSON object in this exact schema:
                                 "confidence": float(parsed.get("confidence", 0.92)),
                                 "model": f"groq/{model_candidate}",
                             }
+                        elif resp.status_code == 429:
+                            err_msg = f"Groq API Rate Limit Reached for key 'GROQ_API_KEY' (model {model_candidate}): {resp.text[:150]}"
+                            logger.warning(err_msg)
+                            diagnostics.append(f"Rate limit reached on GROQ_API_KEY ({model_candidate})")
+                        elif resp.status_code in (401, 403):
+                            err_msg = f"Groq API Authentication Error for key 'GROQ_API_KEY': {resp.text[:150]}"
+                            logger.warning(err_msg)
+                            diagnostics.append("Invalid or unauthorized GROQ_API_KEY")
                         else:
                             logger.warning(
                                 f"Groq API model {model_candidate} returned HTTP {resp.status_code}: {resp.text[:100]}. Trying next candidate."
@@ -153,10 +162,18 @@ Respond ONLY with a JSON object in this exact schema:
                             "confidence": float(data.get("confidence", 0.88)),
                             "model": "gemini-1.5-flash",
                         }
+                    elif resp.status_code == 429:
+                        logger.warning(f"Gemini API Rate Limit Reached for key 'GEMINI_API_KEY': {resp.text[:150]}")
+                        diagnostics.append("Rate limit reached on GEMINI_API_KEY")
+                    elif resp.status_code in (400, 401, 403):
+                        logger.warning(f"Gemini API Authentication Error for key 'GEMINI_API_KEY': {resp.text[:150]}")
+                        diagnostics.append("Invalid or unauthorized GEMINI_API_KEY")
             except Exception as e:
                 logger.warning(f"Gemini API generation failed: {e}.")
 
         # 3. Grounded Heuristic Template Fallback
+        if diagnostics:
+            logger.info(f"AI Drafting Fallback active due to provider diagnostics: {'; '.join(diagnostics)}")
         recipient_salutation = f"Hi {contact_name.split()[0]}" if contact_name else "Hi there"
         subject = f"An idea for {company_name}'s web presence"
         body = (

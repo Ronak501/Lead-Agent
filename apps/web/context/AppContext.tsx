@@ -190,7 +190,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         throw new Error(err.detail || 'Batch auto-dispatch failed');
       }
       const data = await res.json();
-      notify(`⚡ AutoPilot finished! Successfully dispatched ${data.dispatched_count} company emails.`, 'success');
+      if (data.failed && data.failed.length > 0) {
+        notify(`⚡ AutoPilot finished: Dispatched ${data.dispatched_count} emails. ${data.failed.length} failed: ${data.failed.map((f: any) => `${f.company}: ${f.reason}`).join(' | ')}`, 'error');
+      } else {
+        notify(`⚡ AutoPilot finished! Successfully dispatched ${data.dispatched_count} company emails.`, 'success');
+      }
       await fetchData();
     } catch (err: any) {
       notify(err.message, 'error');
@@ -223,7 +227,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setLoading(true);
       notify('Initiating live HTTP audit and tech stack inspection...', 'info');
       const res = await fetch(`${API}/api/leads/${leadId}/audit`, { method: 'POST' });
-      if (!res.ok) throw new Error('Website audit failed');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Website audit failed');
+      }
       notify('Website audit completed! Evidence saved.');
       await fetchData();
     } catch (err: any) {
@@ -246,7 +253,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           tone: 'professional, empathetic, and evidence-backed',
         }),
       });
-      if (!res.ok) throw new Error('Draft generation failed');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Draft generation failed');
+      }
       notify('Email draft generated and ready for human review!');
       await fetchData();
     } catch (err: any) {
@@ -292,7 +302,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           body_text: bodyText,
         }),
       });
-      if (!res.ok) throw new Error('Failed to update draft');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Failed to update draft');
+      }
       notify('Draft updated. Note: previous approval (if any) was reset for safety.');
       await fetchData();
     } catch (err: any) {
@@ -334,7 +347,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           confirm_all: true,
         }),
       });
-      if (!res.ok) throw new Error('Batch approval failed');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Batch approval failed');
+      }
       notify(`Batch approved ${pendingIds.length} drafts! Ready for safe outbox dispatch.`);
       await fetchData();
     } catch (err: any) {
@@ -384,7 +400,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           source: 'admin_dashboard',
         }),
       });
-      if (!res.ok) throw new Error('Failed to add suppression');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Failed to add suppression');
+      }
       notify('Suppression added. Outbound emails to this target are now strictly blocked.');
       await fetchData();
     } catch (err: any) {
@@ -440,7 +459,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       });
-      if (!res.ok) throw new Error('Lead discovery failed');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Lead discovery failed');
+      }
       const newLeads = await res.json();
       notify(`Discovered and qualified ${newLeads.length} new prospective leads with source evidence!`);
       await fetchData();

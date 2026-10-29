@@ -361,3 +361,51 @@ def test_password_authentication_and_hashing(db_session):
     )
     assert "access_token" in result
     assert result["user"]["email"] == "ronaktalaviya51@gmail.com"
+
+
+@pytest.mark.asyncio
+async def test_specific_error_messages_and_key_naming():
+    """Verify that errors explicitly name the exact config keys (APOLLO_API_KEY, SMTP_USER, etc.)."""
+    from app.providers.discovery import (
+        CompanyDiscoveryProvider,
+        ApiRateLimitException,
+        ApiAuthenticationException,
+    )
+    from app.providers.safe_outreach import SafeEmailSender, SafetyViolation
+    from app.routes import test_integration
+    from fastapi import HTTPException
+
+    # 1. ApiRateLimitException must name key
+    rate_err = ApiRateLimitException("APOLLO_API_KEY", "Rate limit exceeded on Apollo.io")
+    assert "APOLLO_API_KEY" in str(rate_err)
+    assert "Rate Limit" in str(rate_err)
+
+    # 2. ApiAuthenticationException must name key
+    auth_err = ApiAuthenticationException("APOLLO_API_KEY", "HTTP 401 Unauthorized")
+    assert "APOLLO_API_KEY" in str(auth_err)
+    assert "Authentication Failed" in str(auth_err)
+
+    # 3. test_integration raises 400 if key is unconfigured, not masking as 'ok'
+    with pytest.raises(HTTPException) as exc_info:
+        await test_integration("unknown_test_provider")
+    assert exc_info.value.status_code == 404
+
+    # 4. Safe sender unverified email failure names gate and target
+    from app.providers.ai_drafter import EmailDraftProvider
+    sender = SafeEmailSender()
+    valid_hash = EmailDraftProvider.compute_content_hash("Test", "Test body")
+    with pytest.raises(SafetyViolation) as exc_info:
+        await sender.send(
+            draft_id="d1",
+            to_email="unverified@domain.com",
+            subject="Test",
+            body_text="Test body",
+            approved_at=datetime.now(timezone.utc),
+            approval_hash=valid_hash,
+            is_suppressed=False,
+            email_status="risky",
+        )
+    assert "Gate 4 Blocked" in str(exc_info.value)
+    assert "unverified@domain.com" in str(exc_info.value)
+    assert "risky" in str(exc_info.value)
+

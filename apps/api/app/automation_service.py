@@ -9,6 +9,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Dict, Any, List, Optional, Tuple
 from sqlalchemy.orm import Session
+from fastapi import HTTPException
 
 from .config import settings
 from .models import (
@@ -26,11 +27,16 @@ from .models import (
     normalize_domain,
     normalize_email,
 )
-from .providers.discovery import CompanyDiscoveryProvider
+from .providers.discovery import (
+    CompanyDiscoveryProvider,
+    ApiRateLimitException,
+    ApiAuthenticationException,
+    ProviderNotConfiguredException,
+)
 from .providers.verification import EmailVerificationProvider
 from .providers.website_analyzer import WebsiteAuditProvider
 from .providers.ai_drafter import EmailDraftProvider
-from .providers.safe_outreach import SafeEmailSender
+from .providers.safe_outreach import SafeEmailSender, SafetyViolation
 
 logger = logging.getLogger("leadpilot.automation")
 
@@ -82,7 +88,7 @@ def is_target_already_contacted(
             .first()
         )
         if sent_domain_draft:
-            return True, f"Startup '{sent_domain_draft.name}' ({norm_domain}) has already received an email (Draft ID: {sent_domain_draft.id})"
+            return True, f"Startup '{sent_domain_draft.name}' ({norm_domain}) has already received an outreach email (Draft ID: {sent_domain_draft.id})"
 
         sent_domain_lead = (
             db.query(Lead.id, Company.name)
@@ -95,24 +101,27 @@ def is_target_already_contacted(
             .first()
         )
         if sent_domain_lead:
-            return True, f"Startup '{sent_domain_lead.name}' ({norm_domain}) already has status 'sent' or 'replied'"
+            return True, f"Startup '{sent_domain_lead.name}' ({norm_domain}) was already contacted (Lead ID: {sent_domain_lead.id})"
 
-    # 3. Check if this founder email has already received a sent email or replied in ANY campaign
+    # 3. Check if this founder / contact email has already received a sent email or approval in ANY campaign
     if norm_email:
-        sent_founder_approval = (
-            db.query(EmailApproval.draft_id)
+        sent_email_approval = (
+            db.query(EmailApproval.id, EmailApproval.recipient_email)
             .join(EmailDraft, EmailDraft.id == EmailApproval.draft_id)
+            .join(Lead, Lead.id == EmailDraft.lead_id)
+            .join(Company, Company.id == Lead.company_id)
             .filter(
+                Company.workspace_id == workspace_id,
                 EmailApproval.recipient_email == norm_email,
                 EmailDraft.status.in_(["sent", "replied"]),
             )
             .first()
         )
-        if sent_founder_approval:
-            return True, f"Founder email '{norm_email}' has already received outreach (Draft ID: {sent_founder_approval.draft_id})"
+        if sent_email_approval:
+            return True, f"Founder email '{norm_email}' has already been contacted (Approval ID: {sent_email_approval.id})"
 
-        sent_founder_lead = (
-            db.query(Lead.id)
+        sent_contact_lead = (
+            db.query(Lead.id, Contact.full_name)
             .join(Contact, Contact.id == Lead.contact_id)
             .join(Company, Company.id == Lead.company_id)
             .filter(
@@ -122,21 +131,27 @@ def is_target_already_contacted(
             )
             .first()
         )
-        if sent_founder_lead:
-            return True, f"Founder email '{norm_email}' already has status 'sent' or 'replied'"
+        if sent_contact_lead:
+            return True, f"Founder '{sent_contact_lead.full_name}' ({norm_email}) was already contacted (Lead ID: {sent_contact_lead.id})"
+
+        sent_draft_recipient = (
+            db.query(EmailDraft.id)
+            .join(Lead, Lead.id == EmailDraft.lead_id)
+            .join(Contact, Contact.id == Lead.contact_id)
+            .filter(
+                Contact.business_email == norm_email,
+                EmailDraft.status.in_(["sent", "replied"]),
+            )
+            .first()
+        )
+        if sent_draft_recipient:
+            return True, f"Outreach email already dispatched to '{norm_email}' (Draft ID: {sent_draft_recipient.id})"
 
     return False, ""
 
 
-def send_reply_notification_email(
-    lead: Lead,
-    reply_subject: str,
-    reply_body: str,
-    from_email: str
-) -> bool:
-    """
-    Sends an instant high-priority notification to founder@ornitech.in when a prospect replies.
-    """
+def send_reply_notification_email(lead: Lead, reply_subject: str, reply_body: str, from_email: str) -> bool:
+    """Dispatches instant email alert to founder@ornitech.in when a prospect replies to cold outreach."""
     admin_recipient = settings.ADMIN_NOTIFICATION_EMAIL or "founder@ornitech.in"
     company_name = lead.company.name if lead.company else "Unknown Company"
     contact_name = lead.contact.full_name if lead.contact else "Prospect"
@@ -205,67 +220,19 @@ def send_reply_notification_email(
 class AutomationEngine:
     """
     Coordinates end-to-end autonomous outreach:
-    1. Lead Discovery: Finds qualified businesses & decision-makers
+    1. Lead Discovery: Finds real, qualified businesses & decision-makers
     2. Live Auditing & Personalization: Inspects real website gaps & drafts customized pitch
     3. Auto-Approval & Safe Dispatch: Signs with SHA-256 and dispatches cold email direct
     4. Reply Monitoring: Checks inbox, halts follow-ups, and notifies founder@ornitech.in
     """
 
     @classmethod
-    def _generate_targeted_prospects(cls, campaign: Campaign, limit: int = 5) -> List[Dict[str, Any]]:
-        """Generates realistic verified business prospects targeted to the campaign's market, industry and services."""
-        market = campaign.target_country or "India"
-        city = campaign.target_city or "Bangalore"
-        c_type = (campaign.company_type or "B2B SaaS").lower()
-        service = campaign.services[0] if campaign.services else "Website redesign"
-
-        # Catalog of targeted real-world prospects by market/type
-        templates = [
-            {"name": "ZetaScale Cloud", "domain": "zetascale.io", "contact": "Arjun Nair", "title": "Founder & CEO", "industry": "B2B SaaS", "perf": 64},
-            {"name": "FleetCraft Logistics", "domain": "fleetcraft.in", "contact": "Priya Sharma", "title": "Co-Founder & COO", "industry": "Logistics", "perf": 58},
-            {"name": "PayZen Analytics", "domain": "payzen.io", "contact": "Vikram Mehta", "title": "Chief Executive Officer", "industry": "Fintech SaaS", "perf": 71},
-            {"name": "OmniRoute Express", "domain": "omniroute.in", "contact": "Rohan Deshmukh", "title": "Managing Director", "industry": "Logistics & Supply Chain", "perf": 52},
-            {"name": "Synthetix Labs", "domain": "synthetixlabs.io", "contact": "Ananya Roy", "title": "Founder & Product Lead", "industry": "Custom Software", "perf": 68},
-            {"name": "NextWave Freight", "domain": "nextwavefreight.in", "contact": "Siddharth Verma", "title": "Founder", "industry": "Logistics", "perf": 61},
-            {"name": "KiteMetrics AI", "domain": "kitemetrics.io", "contact": "Neha Joshi", "title": "Chief Technology Officer", "industry": "B2B SaaS", "perf": 75},
-            {"name": "UrbanDrop Logistics", "domain": "urbandrop.in", "contact": "Karan Patel", "title": "Co-Founder", "industry": "Logistics", "perf": 55},
-        ]
-
-        results = []
-        for t in templates[:limit]:
-            domain = t["domain"]
-            first_name = t["contact"].split()[0].lower()
-            results.append({
-                "company_name": t["name"],
-                "name": t["name"],
-                "domain": domain,
-                "url": f"https://{domain}",
-                "website_url": f"https://{domain}",
-                "country": market,
-                "city": city,
-                "industry": t["industry"],
-                "contact_name": t["contact"],
-                "contact_title": t["title"],
-                "business_email": f"{first_name}@{domain}",
-                "contact_email": f"{first_name}@{domain}",
-                "email_status": "verified",
-                "fit_score": 88,
-                "source_provider": "leadpilot_targeted_catalog",
-                "source_url": f"https://{domain}",
-                "opportunity_type": service.lower().replace(" ", "_"),
-                "evidence_excerpt": f"Verified business domain {domain} operating in {city}, {market}. Initial HTTP response latency detected.",
-            })
-
-        return results
-
-    @classmethod
     async def discover_leads_for_campaign(cls, campaign: Campaign, db: Session, limit: int = 5) -> List[Lead]:
-        """Auto-discovers, verifies, and records new leads for an active campaign."""
+        """Auto-discovers, verifies, and records real prospective leads for an active campaign."""
         query = f"{campaign.company_type} in {campaign.target_city} {campaign.target_country}"
         service_target = campaign.services[0] if campaign.services else "Website redesign"
         market = campaign.target_country or "India"
 
-        results = []
         try:
             results = await discovery_provider.search(
                 query=query,
@@ -274,13 +241,27 @@ class AutomationEngine:
                 service_target=service_target,
                 limit=limit,
             )
-        except Exception as e:
-            logger.info(f"External discovery provider unconfigured or returned empty ({e}), using targeted business catalog.")
+        except (ApiRateLimitException, ApiAuthenticationException, ProviderNotConfiguredException) as exc:
+            logger.error(f"Lead discovery provider error for campaign '{campaign.name}': {exc}")
+            db.add(
+                AuditLog(
+                    workspace_id=campaign.workspace_id,
+                    user_email=settings.SENDER_EMAIL or "founder@ornitech.in",
+                    action="discovery_error",
+                    entity_type="campaign",
+                    entity_id=campaign.id,
+                    details=f"Discovery Error: {str(exc)}",
+                )
+            )
+            db.commit()
+            raise exc
+        except Exception as exc:
+            logger.error(f"Unexpected discovery error for campaign '{campaign.name}': {exc}")
             results = []
 
-        # If external provider returned no results, generate targeted verified prospects
         if not results:
-            results = cls._generate_targeted_prospects(campaign, limit=limit)
+            logger.info(f"Discovery search returned 0 matching prospects for query '{query}' in {market}.")
+            return []
 
         created_leads = []
         for item in results:
@@ -288,7 +269,7 @@ class AutomationEngine:
             if not domain:
                 continue
 
-            contact_name = item.get("contact_name") or "Founder & CEO"
+            contact_name = item.get("contact_name") or "Founder / Decision Maker"
             first_name = contact_name.split()[0].lower() if contact_name else "founder"
             contact_email = normalize_email(
                 item.get("business_email") or item.get("contact_email") or f"{first_name}@{domain}"
@@ -334,7 +315,7 @@ class AutomationEngine:
                 contact = Contact(
                     company_id=company.id,
                     full_name=contact_name,
-                    title=item.get("contact_title") or "Founder & CEO",
+                    title=item.get("contact_title") or "Founder / Decision Maker",
                     business_email=contact_email,
                     email_status="verified",
                 )
@@ -352,7 +333,7 @@ class AutomationEngine:
                     campaign_id=campaign.id,
                     company_id=company.id,
                     contact_id=contact.id,
-                    fit_score=item.get("fit_score", 88),
+                    fit_score=item.get("fit_score", 85),
                     opportunity_type=service_target.lower().replace(" ", "_"),
                     status="qualified",
                 )
@@ -366,7 +347,7 @@ class AutomationEngine:
                     company_id=company.id,
                     source_url=company.website_url or f"https://{domain}",
                     evidence_type="directory_listing",
-                    excerpt=item.get("description") or f"Verified domain & founder profile for {company.name} in {campaign.target_country}",
+                    excerpt=item.get("evidence_excerpt") or f"Verified domain & founder profile for {company.name} in {campaign.target_country}",
                     confidence=0.88,
                 )
                 db.add(ev)
@@ -392,19 +373,24 @@ class AutomationEngine:
         lead: Lead,
         db: Session,
         service_offer: str = "Modern high-converting web engineering & redesign",
-    ) -> bool:
-        """Audits website, generates evidence-grounded cold email, auto-approves, and dispatches."""
+    ) -> Tuple[bool, str]:
+        """Audits website, generates evidence-grounded cold email, auto-approves, and dispatches.
+        Returns (True, detail) on success, or (False, error_reason) on failure.
+        """
         company = lead.company
         contact = lead.contact
-        if not company or not contact or not contact.business_email:
-            return False
+        if not company:
+            return False, f"Lead ID '{lead.id}' has no associated company record."
+        if not contact or not contact.business_email:
+            return False, f"Company '{company.name}' does not have a resolved contact email."
 
         recipient_email = contact.business_email
 
         # 🚫 Strict Anti-Spam Check: Never send email again to the same startup or founder!
         if lead.status in ("sent", "replied"):
-            logger.info(f"🚫 Anti-Spam Safety: Lead {lead.id} ({company.name}) is already marked '{lead.status}'. Skipping dispatch.")
-            return False
+            msg = f"Anti-Spam Restriction: Lead {lead.id} ({company.name}) is already marked '{lead.status}'. Dispatch skipped."
+            logger.info(f"🚫 {msg}")
+            return False, msg
 
         already_contacted, reason = is_target_already_contacted(
             db=db,
@@ -413,22 +399,24 @@ class AutomationEngine:
             email=recipient_email,
         )
         if already_contacted:
-            logger.info(f"🚫 Anti-Spam Guard blocked duplicate dispatch: {reason}")
-            lead.status = "sent"  # Keep synchronized so it won't be retried
+            msg = f"Anti-Spam Guard blocked duplicate outreach: {reason}"
+            logger.info(f"🚫 {msg}")
+            lead.status = "sent"
             db.commit()
-            return False
+            return False, msg
 
         # 1. Audit website if not audited yet
         latest_audit = db.query(WebsiteAudit).filter_by(company_id=company.id).first()
         if not latest_audit:
             try:
-                audit_res = await audit_provider.audit(company.website_url or f"https://{company.domain}")
+                target_url = company.website_url or f"https://{company.domain}"
+                audit_res = await audit_provider.audit(target_url)
                 latest_audit = WebsiteAudit(
                     company_id=company.id,
                     title=audit_res.get("title", ""),
                     performance_score=audit_res.get("performance_score", 72),
                     status_code=audit_res.get("status_code", 200),
-                    tech_stack_json=json.dumps(audit_res.get("tech_stack", ["Next.js", "React"])),
+                    tech_stack_json=json.dumps(audit_res.get("tech_stack", ["Next.js"])),
                     issues_found_json=json.dumps(audit_res.get("issues_found", [
                         "Observed page speed score of 64/100 on mobile devices",
                         "Legacy styling shifts detected during responsive layout rendering"
@@ -436,7 +424,8 @@ class AutomationEngine:
                 )
                 db.add(latest_audit)
                 db.flush()
-            except Exception:
+            except Exception as e:
+                logger.warning(f"Audit failed for {company.name}: {e}")
                 latest_audit = None
 
         # Store audit findings as SourceEvidence in database
@@ -553,14 +542,28 @@ class AutomationEngine:
             db.add(audit_log)
 
             db.commit()
-            return True
+            return True, send_result.get("detail", f"Dispatched email to {recipient_email}")
+        except SafetyViolation as sv:
+            logger.warning(f"Safety Violation dispatching lead {lead.id} ({company.name}): {str(sv)}")
+            db.add(
+                AuditLog(
+                    workspace_id=company.workspace_id,
+                    user_email=settings.SENDER_EMAIL or "founder@ornitech.in",
+                    action="outreach_dispatch_blocked",
+                    entity_type="lead",
+                    entity_id=lead.id,
+                    details=str(sv),
+                )
+            )
+            db.commit()
+            return False, str(sv)
         except Exception as e:
             logger.error(f"Error dispatching draft {draft.id}: {str(e)}")
             db.rollback()
-            return False
+            return False, f"Dispatch Error: {str(e)}"
 
     @classmethod
-    async def dispatch_cold_emails_for_leads(cls, db: Session, max_batch: int = 5) -> int:
+    async def dispatch_cold_emails_for_leads(cls, db: Session, max_batch: int = 5) -> Tuple[int, List[Dict[str, Any]]]:
         """Finds qualified leads without sent drafts, generates personalized cold email, and dispatches."""
         qualified_leads = (
             db.query(Lead)
@@ -570,12 +573,19 @@ class AutomationEngine:
         )
 
         sent_count = 0
+        failures = []
         for lead in qualified_leads:
-            success = await cls.dispatch_single_lead(lead, db)
+            success, reason = await cls.dispatch_single_lead(lead, db)
             if success:
                 sent_count += 1
+            else:
+                failures.append({
+                    "lead_id": lead.id,
+                    "company": lead.company.name if lead.company else "Unknown",
+                    "error": reason,
+                })
 
-        return sent_count
+        return sent_count, failures
 
     @classmethod
     def check_inbox_for_replies_and_notify(cls, db: Session) -> int:
@@ -665,7 +675,7 @@ class AutomationEngine:
         """
         campaign = db.query(Campaign).filter_by(id=campaign_id).first()
         if not campaign:
-            return {"error": "Campaign not found", "status": "failed"}
+            raise HTTPException(status_code=404, detail=f"Campaign '{campaign_id}' not found.")
 
         logger.info(f"⚡ Starting 100% Autonomous Pipeline for Campaign: {campaign.name}")
 
@@ -676,21 +686,29 @@ class AutomationEngine:
         # 2. Dispatch cold emails directly to each discovered lead
         service_offer = campaign.services[0] if campaign.services else "Modern high-converting web engineering & redesign"
         dispatched_count = 0
+        dispatch_failures = []
         for lead in leads:
-            success = await cls.dispatch_single_lead(lead, db, service_offer=service_offer)
+            success, reason = await cls.dispatch_single_lead(lead, db, service_offer=service_offer)
             if success:
                 dispatched_count += 1
+            else:
+                dispatch_failures.append({
+                    "company_name": lead.company.name if lead.company else "Unknown",
+                    "domain": lead.company.domain if lead.company else "",
+                    "error": reason,
+                })
 
         # 3. Check for replies and alert founder
         replies_count = cls.check_inbox_for_replies_and_notify(db)
 
         return {
-            "status": "success",
+            "status": "success" if (dispatched_count > 0 or len(leads) == 0) else "partial",
             "campaign_id": campaign.id,
             "campaign_name": campaign.name,
             "discovered_leads": len(leads),
             "dispatched_emails": dispatched_count,
             "replies_detected": replies_count,
+            "dispatch_failures": dispatch_failures,
             "notification_target": settings.ADMIN_NOTIFICATION_EMAIL or "founder@ornitech.in",
             "executed_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -701,30 +719,42 @@ class AutomationEngine:
         active_campaigns = db.query(Campaign).filter_by(status="active").all()
         discovered_count = 0
         dispatched_count = 0
+        all_failures = []
 
         # Step 1: Discover Leads across active campaigns
         for camp in active_campaigns:
-            new_leads = await cls.discover_leads_for_campaign(camp, db, limit=5)
-            discovered_count += len(new_leads)
-            service_offer = camp.services[0] if camp.services else "Modern web engineering & redesign"
-            for lead in new_leads:
-                success = await cls.dispatch_single_lead(lead, db, service_offer=service_offer)
-                if success:
-                    dispatched_count += 1
+            try:
+                new_leads = await cls.discover_leads_for_campaign(camp, db, limit=5)
+                discovered_count += len(new_leads)
+                service_offer = camp.services[0] if camp.services else "Modern web engineering & redesign"
+                for lead in new_leads:
+                    success, reason = await cls.dispatch_single_lead(lead, db, service_offer=service_offer)
+                    if success:
+                        dispatched_count += 1
+                    else:
+                        all_failures.append({
+                            "company_name": lead.company.name if lead.company else "Unknown",
+                            "error": reason,
+                        })
+            except Exception as e:
+                logger.error(f"Error in cycle for campaign '{camp.name}': {e}")
+                all_failures.append({"campaign": camp.name, "error": str(e)})
 
         # Step 2: Also dispatch any remaining unsent leads
-        extra_dispatched = await cls.dispatch_cold_emails_for_leads(db, max_batch=5)
+        extra_dispatched, extra_failures = await cls.dispatch_cold_emails_for_leads(db, max_batch=5)
         dispatched_count += extra_dispatched
+        all_failures.extend(extra_failures)
 
         # Step 3: Check Replies & Send Notifications
         replies_count = cls.check_inbox_for_replies_and_notify(db)
 
         return {
-            "status": "success",
+            "status": "success" if not all_failures else "partial",
             "active_campaigns": len(active_campaigns),
             "discovered_leads": discovered_count,
             "dispatched_emails": dispatched_count,
             "replies_detected": replies_count,
+            "failures": all_failures,
             "notification_target": settings.ADMIN_NOTIFICATION_EMAIL or "founder@ornitech.in",
             "executed_at": datetime.now(timezone.utc).isoformat(),
         }

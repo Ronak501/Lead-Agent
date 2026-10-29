@@ -22,6 +22,22 @@ class ProviderNotConfiguredException(Exception):
     pass
 
 
+class ApiRateLimitException(Exception):
+    """Raised when an external provider's quota or rate limit has been reached."""
+    def __init__(self, key_name: str, detail: str):
+        self.key_name = key_name
+        self.detail = detail
+        super().__init__(f"API Rate Limit or Quota Reached for key '{key_name}': {detail}")
+
+
+class ApiAuthenticationException(Exception):
+    """Raised when an external provider rejects credentials."""
+    def __init__(self, key_name: str, detail: str):
+        self.key_name = key_name
+        self.detail = detail
+        super().__init__(f"API Authentication Failed for key '{key_name}': {detail}")
+
+
 class CompanyDiscoveryProvider:
     """Discovers real companies, verifiable domains, and public business evidence."""
 
@@ -38,21 +54,29 @@ class CompanyDiscoveryProvider:
     ) -> list[dict[str, Any]]:
         """Executes a search for real business prospects across configured providers."""
 
+        apollo_error = None
         # 1. Primary Strategy: Apollo API (if configured)
         if self.apollo_key and self.apollo_key != "mock_key":
-            apollo_results = await self._search_apollo(query, market, industry, service_target, limit)
-            if apollo_results:
-                return apollo_results
+            try:
+                apollo_results = await self._search_apollo(query, market, industry, service_target, limit)
+                if apollo_results:
+                    return apollo_results
+            except (ApiRateLimitException, ApiAuthenticationException) as exc:
+                apollo_error = str(exc)
+                logger.warning(f"Apollo provider error: {exc}")
 
         # 2. Secondary Strategy: Public Web Search Engine (Live crawler)
         web_results = await self._search_web(query, market, industry, service_target, limit)
         if web_results:
             return web_results
 
-        # 3. If neither provider is available or both return empty results
+        # 3. If neither provider returned results, surface specific error
+        if apollo_error:
+            raise ApiRateLimitException(f"{apollo_error} (Public web fallback crawler also returned 0 results for query '{query}').")
+
         if not self.apollo_key:
             raise ProviderNotConfiguredException(
-                "No active discovery provider is configured. Please add an Apollo API key (APOLLO_API_KEY) "
+                "No active discovery provider is configured. Please add an Apollo API key (APOLLO_API_KEY) in .env "
                 "or connect your discovery integration in the Integrations tab to discover live businesses."
             )
 
@@ -147,6 +171,20 @@ class CompanyDiscoveryProvider:
                         })
                     if results:
                         return results
+                elif resp.status_code == 429:
+                    raise ApiRateLimitException(
+                        f"API Rate Limit or Quota Reached for key 'APOLLO_API_KEY' (Apollo.io). "
+                        f"Monthly search credit or rate limit exhausted: {resp.text[:200]}"
+                    )
+                elif resp.status_code in (401, 403):
+                    raise ApiAuthenticationException(
+                        f"Apollo API Authentication Failed for key 'APOLLO_API_KEY' (HTTP {resp.status_code}): "
+                        f"Invalid key or plan lacks Search API permissions: {resp.text[:200]}"
+                    )
+                else:
+                    logger.warning(f"Apollo API returned HTTP {resp.status_code}: {resp.text[:200]}")
+        except (ApiRateLimitException, ApiAuthenticationException):
+            raise
         except Exception as e:
             logger.warning(f"Apollo API request failed: {e}")
         return []

@@ -99,15 +99,37 @@ class WebsiteAuditProvider:
                 status_code = response.status_code
                 elapsed = time.time() - start_time
                 html_text = response.text
+        except httpx.ConnectTimeout:
+            elapsed = time.time() - start_time
+            return {
+                "status_code": 408,
+                "title": "Connection Timeout",
+                "meta_description": f"Target server at '{normalized_url}' did not respond within 10.0 seconds.",
+                "tech_stack": ["Timeout"],
+                "issues_found": [f"HTTP Connection Timeout: Website at '{normalized_url}' took >10.0s to respond."],
+                "opportunity_summary": "Domain server is unreachable or timing out under load.",
+                "performance_score": 15,
+            }
+        except httpx.ConnectError as exc:
+            elapsed = time.time() - start_time
+            return {
+                "status_code": 502,
+                "title": "DNS or Connection Failure",
+                "meta_description": f"Could not establish connection to '{normalized_url}'.",
+                "tech_stack": ["Unreachable"],
+                "issues_found": [f"Connection / DNS Resolution Failure: Could not reach '{normalized_url}': {str(exc)[:120]}"],
+                "opportunity_summary": "Domain does not resolve or active web server is not running on port 80/443.",
+                "performance_score": 10,
+            }
         except Exception as exc:
             elapsed = time.time() - start_time
             logger.warning(f"Failed to fetch {normalized_url}: {exc}")
             return {
                 "status_code": status_code or 500,
                 "title": "Domain Unreachable",
-                "meta_description": "Failed to connect to web server",
+                "meta_description": f"Failed to connect to web server: {str(exc)[:100]}",
                 "tech_stack": ["Unknown"],
-                "issues_found": [f"Connection error or timeout: {str(exc)[:120]}"],
+                "issues_found": [f"Website inspection error on '{normalized_url}': {str(exc)[:120]}"],
                 "opportunity_summary": "Website is either unreachable, slow to respond, or experiencing DNS/SSL issues.",
                 "performance_score": 30,
             }

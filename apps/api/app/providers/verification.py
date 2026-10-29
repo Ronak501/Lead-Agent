@@ -76,6 +76,16 @@ class EmailVerificationProvider:
                             "reason": f"Hunter.io verification: {hunter_status} (Score {score}%)",
                             "provider": "hunter_io",
                         }
+                    elif resp.status_code == 429:
+                        logger.warning(
+                            f"Hunter.io API Rate Limit Reached for key 'HUNTER_API_KEY': Monthly verification credits exhausted: {resp.text[:120]}. Falling back to DNS MX."
+                        )
+                    elif resp.status_code in (401, 403):
+                        logger.warning(
+                            f"Hunter.io API Authentication Error for key 'HUNTER_API_KEY': Invalid key or unauthorized: {resp.text[:120]}. Falling back to DNS MX."
+                        )
+                    else:
+                        logger.warning(f"Hunter.io API returned HTTP {resp.status_code}. Falling back to DNS MX.")
             except Exception as e:
                 logger.warning(f"Hunter.io API check failed: {e}")
 
