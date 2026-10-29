@@ -5,20 +5,39 @@ from .config import settings
 
 logger = logging.getLogger("leadpilot.database")
 
-db_url = settings.DATABASE_URL
+raw_db_url = settings.DATABASE_URL or ""
 
-# Handle sqlite special connect args
-connect_args = {}
+# Normalize connection string for psycopg3 and Neon pooling
+if raw_db_url.startswith("postgres://"):
+    db_url = raw_db_url.replace("postgres://", "postgresql+psycopg://", 1)
+elif raw_db_url.startswith("postgresql://") and not raw_db_url.startswith("postgresql+psycopg://"):
+    db_url = raw_db_url.replace("postgresql://", "postgresql+psycopg://", 1)
+else:
+    db_url = raw_db_url
+
+# Neon best practice for serverless: strip channel_binding if present to avoid driver handshake mismatch
+if "channel_binding=require" in db_url:
+    db_url = db_url.replace("&channel_binding=require", "").replace("channel_binding=require&", "").replace("channel_binding=require", "")
+
+# Handle sqlite vs postgres engine configuration
+engine_kwargs = {}
 if db_url.startswith("sqlite"):
-    connect_args = {"check_same_thread": False}
+    engine_kwargs["connect_args"] = {"check_same_thread": False}
+else:
+    # Recommended Neon serverless pooling settings
+    engine_kwargs["pool_pre_ping"] = True  # Verifies connection liveness on checkout
+    engine_kwargs["pool_recycle"] = 300    # Recycles idle connections every 5 mins
+    engine_kwargs["pool_size"] = 5
+    engine_kwargs["max_overflow"] = 10
 
 try:
-    engine = create_engine(db_url, connect_args=connect_args)
+    engine = create_engine(db_url, **engine_kwargs)
     # Test connection
     with engine.connect() as conn:
         pass
+    logger.info("Successfully connected to Neon PostgreSQL database!")
 except Exception as e:
-    logger.warning(f"Could not connect to configured DATABASE_URL ({db_url}): {e}. Falling back to SQLite local db.")
+    logger.warning(f"Could not connect to configured DATABASE_URL: {e}. Falling back to SQLite local db.")
     db_url = "sqlite:///./leadpilot.db"
     engine = create_engine(db_url, connect_args={"check_same_thread": False})
 

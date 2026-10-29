@@ -65,9 +65,13 @@ jobs:
           service: ${{ env.BACKEND_SERVICE }}
           image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY_NAME }}/${{ env.BACKEND_SERVICE }}:${{ github.sha }}
           region: ${{ env.REGION }}
-          flags: |
-            --allow-unauthenticated
-            --set-env-vars=ALLOWED_OAUTH_DOMAIN=ornitech.in,ADMIN_NOTIFICATION_EMAIL=founder@ornitech.in,SENDER_EMAIL=founder@ornitech.in,SENDER_NAME=Ornitech Solutions,APP_ENV=production
+          flags: '--allow-unauthenticated'
+          env_vars: |
+            ALLOWED_OAUTH_DOMAIN=ornitech.in
+            ADMIN_NOTIFICATION_EMAIL=founder@ornitech.in
+            SENDER_EMAIL=founder@ornitech.in
+            SENDER_NAME=Ornitech Solutions
+            APP_ENV=production
 
   # ==========================================
   # 2. DEPLOY FRONTEND (Next.js Web UI)
@@ -114,6 +118,6 @@ jobs:
           service: ${{ env.FRONTEND_SERVICE }}
           image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY_NAME }}/${{ env.FRONTEND_SERVICE }}:${{ github.sha }}
           region: ${{ env.REGION }}
-          flags: |
-            --allow-unauthenticated
-            --set-env-vars=NEXT_PUBLIC_API_BASE_URL=${{ needs.deploy-backend.outputs.backend_url }}
+          flags: '--allow-unauthenticated'
+          env_vars: |
+            NEXT_PUBLIC_API_BASE_URL=${{ needs.deploy-backend.outputs.backend_url }}

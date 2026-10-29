@@ -25,6 +25,8 @@ wheels/
 leadpilot.db
 
 # Credentials and Secrets
+powershell.cmd
+powershell.bat
 *.pem
 *.key
 *key*.json
@@ -66,3 +68,4 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+.neon
