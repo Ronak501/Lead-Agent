@@ -65,8 +65,9 @@ jobs:
           service: ${{ env.BACKEND_SERVICE }}
           image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY_NAME }}/${{ env.BACKEND_SERVICE }}:${{ github.sha }}
           region: ${{ env.REGION }}
-          flags: '--allow-unauthenticated'
+          flags: '--allow-unauthenticated --service-account=github-deployer@${{ env.PROJECT_ID }}.iam.gserviceaccount.com'
           env_vars: |
+            DATABASE_URL=${{ secrets.DATABASE_URL }}
             ALLOWED_OAUTH_DOMAIN=ornitech.in
             ADMIN_NOTIFICATION_EMAIL=founder@ornitech.in
             SENDER_EMAIL=founder@ornitech.in
@@ -118,6 +119,6 @@ jobs:
           service: ${{ env.FRONTEND_SERVICE }}
           image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY_NAME }}/${{ env.FRONTEND_SERVICE }}:${{ github.sha }}
           region: ${{ env.REGION }}
-          flags: '--allow-unauthenticated'
+          flags: '--allow-unauthenticated --service-account=github-deployer@${{ env.PROJECT_ID }}.iam.gserviceaccount.com'
           env_vars: |
             NEXT_PUBLIC_API_BASE_URL=${{ needs.deploy-backend.outputs.backend_url }}
