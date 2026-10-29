@@ -294,6 +294,7 @@ class GoogleAuthVerifyResponse(BaseModel):
 
 class OrnitechLoginRequest(BaseModel):
     email: str = Field(description="Must be an @ornitech.in email address")
+    password: Optional[str] = None
     full_name: Optional[str] = None
     access_key: Optional[str] = None
 

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Lock, AlertCircle, Building2, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, Lock, AlertCircle, Building2, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 
 interface AuthGateProps {
   apiBaseUrl: string;
@@ -10,7 +10,8 @@ interface AuthGateProps {
 
 export function AuthGate({ apiBaseUrl, onAuthenticated }: AuthGateProps) {
   const [email, setEmail] = useState('');
-  const [fullName, setFullName] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -28,7 +29,7 @@ export function AuthGate({ apiBaseUrl, onAuthenticated }: AuthGateProps) {
 
         const data = await res.json();
         if (!res.ok) {
-          throw new Error(data.detail || 'Access Denied: Only @ornitech.in or authorized admin accounts are permitted.');
+          throw new Error(data.detail || 'Access Denied: Account not authorized for this platform.');
         }
 
         localStorage.setItem('ornitech_token', data.access_token);
@@ -69,10 +70,10 @@ export function AuthGate({ apiBaseUrl, onAuthenticated }: AuthGateProps) {
     setErrorMessage(null);
 
     const cleanEmail = email.trim().toLowerCase();
-    const isWhitelistedAdmin = cleanEmail === 'ronaktalaviya51@gmail.com';
+    const cleanPassword = password.trim();
 
-    if (!cleanEmail.endsWith('@ornitech.in') && !isWhitelistedAdmin) {
-      setErrorMessage('⛔ Access Denied: Only @ornitech.in company accounts or authorized admin (ronaktalaviya51@gmail.com) are permitted.');
+    if (!cleanEmail || !cleanPassword) {
+      setErrorMessage('Please enter both email address and password.');
       return;
     }
 
@@ -83,13 +84,13 @@ export function AuthGate({ apiBaseUrl, onAuthenticated }: AuthGateProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: cleanEmail,
-          full_name: fullName.trim() || undefined,
+          password: cleanPassword,
         }),
       });
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.detail || 'Access denied.');
+        throw new Error(data.detail || 'Invalid email or password.');
       }
 
       localStorage.setItem('ornitech_token', data.access_token);
@@ -112,7 +113,7 @@ export function AuthGate({ apiBaseUrl, onAuthenticated }: AuthGateProps) {
         {/* Brand Header */}
         <div className="text-center space-y-2">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#35422d]/10 border border-[#35422d]/25 text-[#35422d] text-xs font-semibold">
-            <ShieldCheck size={14} /> Domain Protected: @ornitech.in & Admin
+            <ShieldCheck size={14} /> Enterprise Security Gateway
           </div>
           <h1 className="font-serif text-2xl font-bold tracking-tight text-[#29251d] flex items-center justify-center gap-2">
             <Building2 className="text-[#694737]" size={24} /> Ornitech Solutions
@@ -137,41 +138,50 @@ export function AuthGate({ apiBaseUrl, onAuthenticated }: AuthGateProps) {
           <div className="relative flex py-2 items-center">
             <div className="flex-grow border-t border-[#ddd5c3]" />
             <span className="flex-shrink mx-3 text-[11px] uppercase tracking-wider text-[#694737] font-medium font-sans">
-              or sign in with authorized email
+              or sign in with password
             </span>
             <div className="flex-grow border-t border-[#ddd5c3]" />
           </div>
         </div>
 
-        {/* Corporate Form Login */}
-        <form onSubmit={handleCorporateLogin} className="space-y-4">
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-[#29251d] block">Full Name</label>
-            <input
-              type="text"
-              placeholder="e.g. Ronak Talaviya"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-[16px_12px_14px_18px] bg-[#eee6d6]/60 border border-[#ddd5c3] text-[#29251d] text-xs placeholder:text-[#694737]/60 focus:outline-none focus:border-[#35422d] focus:ring-1 focus:ring-[#35422d] transition-all"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-[#29251d] block">Email Address (@ornitech.in or Admin)</label>
+        {/* Corporate Form Login - Clean Inputs with No Exposing Labels */}
+        <form onSubmit={handleCorporateLogin} className="space-y-3.5">
+          <div className="relative">
             <input
               type="email"
               required
-              placeholder="yourname@ornitech.in or ronaktalaviya51@gmail.com"
+              autoComplete="username"
+              placeholder="Email address"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-[16px_12px_14px_18px] bg-[#eee6d6]/60 border border-[#ddd5c3] text-[#29251d] text-xs placeholder:text-[#694737]/60 focus:outline-none focus:border-[#35422d] focus:ring-1 focus:ring-[#35422d] transition-all"
+              className="w-full px-4 py-3 rounded-[16px_12px_14px_18px] bg-[#eee6d6]/60 border border-[#ddd5c3] text-[#29251d] text-xs placeholder:text-[#694737]/60 focus:outline-none focus:border-[#35422d] focus:ring-1 focus:ring-[#35422d] transition-all"
             />
+          </div>
+
+          <div className="relative">
+            <input
+              type={showPassword ? 'text' : 'password'}
+              required
+              autoComplete="current-password"
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full pl-4 pr-11 py-3 rounded-[16px_12px_14px_18px] bg-[#eee6d6]/60 border border-[#ddd5c3] text-[#29251d] text-xs placeholder:text-[#694737]/60 focus:outline-none focus:border-[#35422d] focus:ring-1 focus:ring-[#35422d] transition-all"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#694737]/70 hover:text-[#29251d] transition-colors focus:outline-none p-1"
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+            >
+              {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+            </button>
           </div>
 
           <button
             type="submit"
-            disabled={loading || !email}
-            className="w-full py-2.5 px-4 rounded-[27px_19px_29px_16px] bg-[#35422d] hover:bg-[#273320] text-[#f5eddf] font-semibold text-xs shadow-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50 active:scale-[0.98]"
+            disabled={loading || !email || !password}
+            className="w-full py-3 px-4 rounded-[27px_19px_29px_16px] bg-[#35422d] hover:bg-[#273320] text-[#f5eddf] font-semibold text-xs shadow-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50 active:scale-[0.98] cursor-pointer"
           >
             {loading ? (
               <span className="inline-block animate-spin mr-2">⏳</span>
@@ -186,7 +196,7 @@ export function AuthGate({ apiBaseUrl, onAuthenticated }: AuthGateProps) {
         <div className="pt-2 border-t border-[#ddd5c3] text-center">
           <p className="text-[11px] text-[#443b2f] flex items-center justify-center gap-1.5">
             <CheckCircle2 size={12} className="text-[#35422d]" />
-            Internal tool strictly reserved for Ornitech Solutions team & Ronak Talaviya.
+            Protected enterprise portal. Authorized credentials required.
           </p>
         </div>
       </div>

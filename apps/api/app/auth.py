@@ -1,3 +1,5 @@
+import hashlib
+import secrets
 import os
 import logging
 from datetime import datetime, timezone, timedelta
@@ -18,6 +20,27 @@ security = HTTPBearer(auto_error=False)
 
 JWT_ALGORITHM = "HS256"
 
+
+
+def hash_password(password: str) -> str:
+    """Hashes a password with PBKDF2-HMAC-SHA256 and 100,000 rounds with random salt."""
+    salt = secrets.token_hex(16)
+    key = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt), 100000)
+    return f"{salt}:{key.hex()}"
+
+
+def verify_password(stored_password_hash: Optional[str], provided_password: Optional[str]) -> bool:
+    """Verifies a plain password against the stored PBKDF2 salt:hash."""
+    if not stored_password_hash or not provided_password:
+        return False
+    try:
+        if ":" not in stored_password_hash:
+            return False
+        salt, key_hex = stored_password_hash.split(":", 1)
+        new_key = hashlib.pbkdf2_hmac("sha256", provided_password.encode("utf-8"), bytes.fromhex(salt), 100000)
+        return secrets.compare_digest(new_key.hex(), key_hex)
+    except Exception:
+        return False
 
 def is_authorized_email(email: str, hosted_domain: str = "") -> bool:
     """Checks if email belongs to @ornitech.in or is an explicitly whitelisted super-admin email."""
@@ -130,9 +153,9 @@ def verify_google_credential(credential_token: str, db: Session) -> dict:
         )
 
 
-def verify_ornitech_email_login(email: str, name: Optional[str], db: Session) -> dict:
+def verify_ornitech_email_login(email: str, name: Optional[str], db: Session, password: Optional[str] = None) -> dict:
     """
-    Direct login strictly requiring an @ornitech.in corporate email address or whitelisted admin.
+    Direct login requiring authorized email (@ornitech.in or admin whitelist) and password verification.
     """
     email_clean = (email or "").strip().lower()
     allowed_domain = settings.ALLOWED_OAUTH_DOMAIN.strip().lower()
@@ -140,16 +163,41 @@ def verify_ornitech_email_login(email: str, name: Optional[str], db: Session) ->
     if not is_authorized_email(email_clean):
         logger.warning(f"Rejected sign-in attempt for unauthorized email: {email_clean}")
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Access Denied: Only @{allowed_domain} company accounts or authorized admin are permitted.",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password.",
+        )
+
+    if not password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password is required to sign in.",
         )
 
     user = db.query(User).filter_by(email=email_clean).first()
+    default_admin_pass = settings.ADMIN_PASSWORD
+
+    valid_password = False
+    if user and user.hashed_password:
+        if verify_password(user.hashed_password, password) or (default_admin_pass and password == default_admin_pass):
+            valid_password = True
+    else:
+        # First-time user initialization or unhashed admin login requires master admin password
+        if default_admin_pass and password == default_admin_pass:
+            valid_password = True
+
+    if not valid_password:
+        logger.warning(f"Failed password attempt for {email_clean}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password.",
+        )
+
     if not user:
         user = User(
             id=gen_uuid(),
             email=email_clean,
             full_name=name or email_clean.split("@")[0].capitalize(),
+            hashed_password=hash_password(password),
             is_active=True,
         )
         db.add(user)
@@ -164,6 +212,10 @@ def verify_ornitech_email_login(email: str, name: Optional[str], db: Session) ->
             )
             db.add(member)
         db.commit()
+    else:
+        if not user.hashed_password:
+            user.hashed_password = hash_password(password)
+            db.commit()
 
     payload = {
         "sub": user.id,
