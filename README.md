@@ -1,197 +1,166 @@
-# LeadPilot AI — Production-Ready AI Cold Email Lead Generation SaaS
+# LeadPilot AI 🚀
+### Autonomous B2B Lead Discovery, Cold Outreach & Reply Notification Platform
 
-> **Evidence-Grounded B2B Outreach Engine**: Discovers high-intent business prospects across India and global markets, analyzes live website performance and tech stack gaps, verifies decision-maker deliverability, generates factual grounded drafts, and enforces mandatory human approval prior to dispatch.
-
----
-
-## 1. System Architecture & 8-Phase Foundation
-
-LeadPilot AI is built as a production-grade decoupled monorepo:
-
-### Part 1: Relational Persistence & Multi-Tenant Isolation
-- **15 PostgreSQL Models**: `users`, `workspaces`, `workspace_members`, `campaigns`, `companies`, `contacts`, `leads`, `source_evidence`, `website_audits`, `email_drafts`, `email_approvals`, `email_events`, `suppressions`, `integration_connections`, `audit_logs`.
-- **Deduplication & Normalization**: Companies deduplicated by normalized domain (`normalize_domain`); contacts deduplicated by normalized email (`normalize_email`).
-- **Alembic Versioning**: Versioned migration scripts in `apps/api/migrations/versions/`.
-- **Graceful Fallback**: Automatically initializes SQLite (`leadpilot.db`) on zero-config local runs, with instant switch to PostgreSQL via `DATABASE_URL`.
-
-### Part 2: Pluggable Discovery & Contact Enrichment
-- **Apollo API Adapter**: Queries organizations and verified decision-maker contacts.
-- **Live Search Adapter**: Live crawler discovering active business domains matching market & industry queries.
-- **Zero Hallucination Policy**: If providers are unconfigured, actionable integration messages are surfaced instead of returning fabricated companies or guessed emails.
-
-### Part 3: Live Website Opportunity Analyzer & SSRF Protection
-- **SSRF Defense**: Strict blocking of localhost, `127.0.0.1`, `0.0.0.0`, cloud metadata endpoints (`169.254.169.254`), and unsafe redirects.
-- **Diagnostics**: Real-time HTTP crawler checking response latency, viewport tag presence, tech stack fingerprints (WordPress, Wix, React/Next.js), and CTA presence.
-- **Google PageSpeed Insights**: Optional integration for mobile Core Web Vitals scoring.
-- **Separation of Concerns**: Factual observations and inferred opportunities are recorded separately.
-
-### Part 4: Evidence-Grounded AI Email Drafting
-- **Groq LPU Acceleration (Primary)**: Uses Groq's high-speed inference engine (`llama-3.3-70b-versatile` or `llama-3.1-8b-instant`) with strict JSON schema response mode.
-- **Gemini API Integration (Secondary / Fallback)**: Supported for multi-model flexibility.
-- **Strict Grounding Rule**: Opening personalization lines MUST quote verifiable source observations.
-- **Tamper-Proof Hashing**: SHA-256 content fingerprinting (`compute_content_hash`). Any edit to an approved draft revokes sign-off and resets status to `pending_review`.
-
-### Part 5: Mandatory Human Approval & 5-Gate Sending Filter
-No email is ever sent programmatically or in bulk without explicit individual review:
-1. **Gate 1**: Explicit human sign-off (`approved_at` timestamp and reviewer identifier).
-2. **Gate 2**: Exact SHA-256 content verification matching approval snapshot.
-3. **Gate 3**: Suppression list check (blocks unsubscribes, bounces, complaints, and domain wildcards).
-4. **Gate 4**: Deliverability status verification (restricted to `valid` or `verified`).
-5. **Gate 5**: Master sending killswitch (`EMAIL_SENDING_ENABLED`) and OAuth account authorization.
-
-### Part 6: Next.js 15 App Router Dashboard UI (All 9 Pages)
-1. **Dashboard (Overview)**: Full funnel visualization, KPIs, quality checklist, and demo data reloader.
-2. **Campaign Builder**: Dedicated campaign creation and parameter tuning with target markets, industries, company sizes, and services.
-3. **Lead Discovery**: Filterable prospect table with decision makers, verification badges, fit score, and quick actions.
-4. **Lead Details**: Deep diagnostic view separating observed technical issues from marketing opportunities, stored evidence cards, and contact provenance.
-5. **Email Drafts**: Interactive draft studio with side-by-side evidence citations and live Desktop/Mobile preview toggle.
-6. **Approval Queue**: Dedicated individual sign-off station displaying recipient, sender identity, subject, and body. (Batch send without review is prohibited).
-7. **Inbox & Analytics**: Delivery event breakdown (sent, delivered, opened, replied, bounced, opted-out) and CSV export.
-8. **Integrations**: Provider connection hub for Gemini, Apollo, Hunter, Gmail OAuth, and PageSpeed.
-9. **Settings**: Workspace settings, usage quotas, team roles, and suppression list management.
+> **Internal Enterprise Platform for Ornitech Solutions (`@ornitech.in`)**  
+> Deployed on **Google Cloud Run** | Database on **Neon Serverless PostgreSQL**
 
 ---
 
-## 2. Quickstart Guide (Run Locally on Windows)
+## 📌 Overview
 
-### Prerequisites
+**LeadPilot AI** is an autonomous outbound sales and prospecting system built specifically for **Ornitech Solutions**. It discovers real business prospects, audits their live websites, generates highly personalized, evidence-grounded cold email pitches, automatically dispatches outreach sequences, and monitors inboxes for replies—sending instant high-priority alerts to `founder@ornitech.in`.
+
+---
+
+## 🏗️ Architecture
+
+```
+                  ┌──────────────────────────────────────────────┐
+                  │   Client Browser / Mobile Safari / Chrome    │
+                  └──────────────────────┬───────────────────────┘
+                                         │
+                   (Access restricted to @ornitech.in users)
+                                         ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ Google Cloud Run (asia-south1)                                                  │
+│                                                                                 │
+│  ┌─────────────────────────────────────┐   API Requests   ┌──────────────────┐  │
+│  │  leadpilot-web (Next.js 15 UI)       │ ───────────────> │  leadpilot-api   │  │
+│  │  - Ornitech Auth Gate               │                  │  (FastAPI)       │  │
+│  │  - Campaign & Lead Management       │ <─────────────── │  - Autonomous    │  │
+│  │  - Draft Review & Outbox Monitoring │    CORS Handled  │    Engine        │  │
+│  └─────────────────────────────────────┘                  └────────┬─────────┘  │
+└────────────────────────────────────────────────────────────────────┼────────────┘
+                                                                     │
+                         ┌───────────────────────────────────────────┼────────────────────────────────────────┐
+                         │                                           │                                        │
+                         ▼                                           ▼                                        ▼
+      ┌─────────────────────────────────────┐     ┌───────────────────────────────────┐    ┌───────────────────────────────────┐
+      │ Neon Serverless PostgreSQL          │     │ Cold Outreach Engine              │    │ IMAP Reply Listener               │
+      │ Project: patient-sun-84571978       │     │ - Live SMTP / Gmail API           │    │ - Detects prospect replies        │
+      │ Branch: production                  │     │ - Unique Message-ID tracking      │    │ - Halts automated follow-ups      │
+      │ - 15 Relational Tables              │     │ - Rate-limited & personalized     │    │ - Sends instant email alert to    │
+      │ - Connection Pooling via PgBouncer  │     │                                   │    │   founder@ornitech.in             │
+      └─────────────────────────────────────┘     └───────────────────────────────────┘    └───────────────────────────────────┘
+```
+
+---
+
+## ✨ Core Capabilities
+
+### 1. 🔍 Automated Lead Discovery
+* Discovers prospective companies based on target market, city, industry, and service criteria.
+* Automatically verifies email deliverability via DNS MX records before queuing.
+* Checks domain suppressions to avoid contacting unsubscribed or opted-out leads.
+* Performs live HTTP/tech audits on prospects' websites.
+
+### 2. ⚡ Automated Email Personalization & Dispatch
+* Generates evidence-grounded pitches highlighting performance, tech stack, or UI gaps detected during website audits.
+* Locks drafts with SHA-256 content hashes to guarantee tampering protection.
+* Dispatches through authenticated SMTP/Gmail with custom `Message-ID` headers for thread tracking.
+
+### 3. 🔔 Real-Time Reply Detection & Instant Alert
+* Continuously checks incoming emails via IMAP/Webhooks for references to outbound campaign messages.
+* When a lead replies:
+  1. Status immediately updates to **`REPLIED`**.
+  2. All pending follow-ups for that lead are halted.
+  3. **Dispatches an instant email alert to `founder@ornitech.in`** containing prospect details, company website, and full reply text.
+
+### 4. 🔒 Strict `@ornitech.in` Authentication Gate
+* **Google Workspace Single Sign-On (GIS)**: Restricts Google Sign-In strictly to `hosted_domain: "ornitech.in"`.
+* **Corporate Email Login**: Team members can sign in with their `@ornitech.in` address.
+* Any user attempting to log in from `@gmail.com` or any external domain is rejected with `403 Forbidden`.
+
+---
+
+## 🛠️ Tech Stack
+
+* **Frontend**: Next.js 15, React 19, Tailwind CSS, Lucide Icons
+* **Backend**: FastAPI (Python 3.11+), SQLAlchemy 2.0, Pydantic v2
+* **Database**: Neon Serverless PostgreSQL (`psycopg` v3 driver with PgBouncer connection pooling)
+* **Hosting**: Google Cloud Run (`asia-south1`)
+* **CI/CD**: GitHub Actions automated pipeline
+
+---
+
+## 🚀 Live Cloud Run Endpoints
+
+| Service | Cloud Run URL |
+|---|---|
+| **Web Dashboard** | [https://leadpilot-web-822012759095.asia-south1.run.app](https://leadpilot-web-822012759095.asia-south1.run.app) |
+| **API Documentation** | [https://leadpilot-api-822012759095.asia-south1.run.app/docs](https://leadpilot-api-822012759095.asia-south1.run.app/docs) |
+| **Health Check** | [https://leadpilot-api-822012759095.asia-south1.run.app/health](https://leadpilot-api-822012759095.asia-south1.run.app/health) |
+| **Autonomous Status**| [https://leadpilot-api-822012759095.asia-south1.run.app/api/automation/status](https://leadpilot-api-822012759095.asia-south1.run.app/api/automation/status) |
+
+---
+
+## ⚙️ Environment Variables
+
+### Backend (`apps/api/.env`)
+```env
+# Database (Neon Serverless PostgreSQL)
+DATABASE_URL="postgresql://neondb_owner:***@ep-curly-term-b5ci0so6-pooler.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require"
+
+# Access Control
+ALLOWED_OAUTH_DOMAIN=ornitech.in
+JWT_SECRET=your-secure-jwt-secret-key
+
+# Notification & Alerts
+ADMIN_NOTIFICATION_EMAIL=founder@ornitech.in
+SENDER_NAME="Ornitech Solutions"
+SENDER_EMAIL=founder@ornitech.in
+
+# Live Sending & Reply Polling
+EMAIL_SENDING_ENABLED=true
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=founder@ornitech.in
+SMTP_PASS=your-google-app-password
+IMAP_SERVER=imap.gmail.com
+IMAP_USER=founder@ornitech.in
+IMAP_PASS=your-google-app-password
+
+# Continuous Background Automation
+AUTOPILOT_AUTO_RUN=true
+AUTOPILOT_INTERVAL_MINUTES=15
+```
+
+---
+
+## 💻 Local Development Quickstart
+
+### 1. Prerequisites
+- Node.js 20+
 - Python 3.11+
-- Node.js 20+ and npm
-### Option A: Run Everything with a Single Docker Command (Recommended)
+- [uv](https://github.com/astral-sh/uv) (recommended) or pip
 
-To start the entire production-grade stack (Frontend + Backend + PostgreSQL + Redis) in one go:
-
-```powershell
-cd d:\WEB\Lead-Agent
-docker compose up --build
+### 2. Backend Setup
+```bash
+cd apps/api
+uv venv .venv
+source .venv/bin/activate  # On Windows: .\.venv\Scripts\activate
+uv pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-- **Next.js Dashboard**: [http://localhost:3000](http://localhost:3000)
-- **FastAPI API Documentation**: [http://localhost:8000/docs](http://localhost:8000/docs)
-- **Backend Health Check**: [http://localhost:8000/health](http://localhost:8000/health)
-
-*(Database migrations and seed data run automatically inside the containers).*
-
----
-
-### Option B: Run Services Manually (Without Docker)
-
-### Step 1: Start Backend (Terminal 1)
-
-```powershell
-cd d:\WEB\Lead-Agent\apps\api
-
-# 1. Create and activate virtual environment
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-
-# 2. Install dependencies
-pip install -r requirements.txt
-
-# 3. (Optional) Run Alembic migrations against PostgreSQL
-alembic upgrade head
-
-# 4. Start FastAPI server
-uvicorn app.main:app --reload --port 8000
-```
-
-- API Docs (Swagger): [http://localhost:8000/docs](http://localhost:8000/docs)
-- Health Check: [http://localhost:8000/health](http://localhost:8000/health)
-
----
-
-### Step 2: Start Frontend Dashboard (Terminal 2)
-
-```powershell
-cd d:\WEB\Lead-Agent\apps\web
-
-# 1. Install dependencies
+### 3. Frontend Setup
+```bash
+cd apps/web
 npm install
-
-# 2. Start Next.js dev server
 npm run dev
 ```
-
-- Web Dashboard: [http://localhost:3000](http://localhost:3000)
-
----
-
-### Step 3: Run Infrastructure with Docker Compose (Optional)
-
-To run PostgreSQL 16 and Redis 7 in containers:
-
-```powershell
-cd d:\WEB\Lead-Agent\infra
-docker compose up -d
-```
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 
-## 3. Environment Variables Reference
+## 🤖 Installed Agent Skills
 
-Configure variables in `apps/api/.env`:
-
-| Variable | Description | Default |
-|---|---|---|
-| `DATABASE_URL` | PostgreSQL connection URI (falls back to SQLite `leadpilot.db` if unreachable) | `sqlite:///./leadpilot.db` |
-| `REDIS_URL` | Redis connection URL for background jobs | `redis://localhost:6379/0` |
-| `GROQ_API_KEY` | Groq API key for ultra-fast LPU email drafting | Empty (falls back to Gemini/template) |
-| `GROQ_MODEL` | Groq model selection (`llama-3.3-70b-versatile`, `llama-3.1-8b-instant`) | `llama-3.3-70b-versatile` |
-| `GEMINI_API_KEY` | Google Gemini API key (secondary fallback) | Empty |
-| `APOLLO_API_KEY` | Apollo.io API key for live B2B discovery and contact enrichment | Empty (uses live web search crawler) |
-| `HUNTER_API_KEY` | Hunter.io API key for authoritative email verification | Empty (uses DoH DNS MX validation) |
-| `GOOGLE_CLIENT_ID` | Google OAuth Client ID for Gmail dispatch | Empty |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth Client Secret for Gmail dispatch | Empty |
-| `EMAIL_SENDING_ENABLED` | Master outreach killswitch (`false` = simulated safe sandbox) | `false` |
-| `DEFAULT_WORKSPACE_ID` | Default workspace partition ID for multi-tenant isolation | `ws_default_01` |
+This repository includes custom agent skills in `.gemini/skills/`:
+- **`neon-postgres`**: Guidelines for Neon Serverless PostgreSQL, branching, connection pooling, and migrations.
+- **`leadpilot-outreach`**: Autonomous lead discovery, outreach cadence, deliverability verification, and reply alerting rules.
 
 ---
 
-## 4. Core API Endpoints
+## 📄 License
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `GET` | `/health` | Health check & safety configuration |
-| `GET` | `/api/campaigns` | List workspace campaigns with lead counts |
-| `POST` | `/api/campaigns` | Create new targeting campaign |
-| `GET` | `/api/leads` | Filter leads by status, fit score, or campaign |
-| `POST` | `/api/leads/discover` | Discover real prospects via Apollo or search crawler |
-| `POST` | `/api/leads/{id}/audit` | Run live website crawl & opportunity detection |
-| `GET` | `/api/drafts` | List generated email drafts |
-| `POST` | `/api/drafts/generate` | Generate grounded cold email draft with Gemini |
-| `PUT` | `/api/drafts/{id}` | Edit draft (automatically revokes previous approval) |
-| `POST` | `/api/drafts/{id}/approve` | Individually sign-off & lock draft with SHA-256 hash |
-| `POST` | `/api/drafts/{id}/send` | Validate 5 safety gates & dispatch email |
-| `POST` | `/api/webhooks/email-events` | Ingest delivery webhooks (auto-suppresses on bounce/opt-out) |
-| `GET` | `/api/oauth/gmail/authorize` | Get Google OAuth consent URL |
-| `POST` | `/api/oauth/gmail/callback` | Exchange OAuth code and activate provider |
-| `GET` | `/api/suppressions` | List blocked emails and domains |
-| `POST` | `/api/suppressions` | Add address or domain to suppression blocklist |
-| `DELETE` | `/api/suppressions/{id}` | Remove address from suppression list |
-| `GET` | `/api/analytics` | Delivery metrics, funnel stats, and conversion rate |
-| `GET` | `/api/leads/export/csv` | Download CSV of discovered leads and verification data |
-| `POST` | `/api/seed` | Reset and reload verified demo leads and audits |
-
----
-
-## 5. Running Automated Tests
-
-To run the comprehensive security and safety test suite:
-
-```powershell
-cd d:\WEB\Lead-Agent\apps\api
-pytest -v
-```
-
-Tests verify:
-- Strict SSRF blocking against private subnets and metadata URLs
-- Approval bypass prevention (unapproved drafts are blocked from dispatch)
-- Tamper-proof SHA-256 draft hash verification
-- Suppression list enforcement (suppressed recipients cannot be emailed)
-- Unverified email address blocking
-- Multi-tenant workspace data isolation
-- Domain and email normalization routines
-- Email verification provider syntax & disposable domain rejection
-- Discovery provider unconfigured error handling
-#   L e a d - A g e n t  
- 
+Proprietary — Internal software for **Ornitech Solutions** (`ornitech.in`). All rights reserved.
