@@ -204,7 +204,8 @@ def send_reply_notification_email(lead: Lead, reply_subject: str, reply_body: st
 
             with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15) as server:
                 server.starttls()
-                server.login(settings.SMTP_USER, settings.SMTP_PASS)
+                clean_pass = settings.SMTP_PASS.strip().replace(" ", "")
+                server.login(settings.SMTP_USER, clean_pass)
                 server.send_message(msg)
             
             logger.info(f"Successfully dispatched live reply notification email to {admin_recipient}")
@@ -592,14 +593,17 @@ class AutomationEngine:
         """
         Polls IMAP inbox, detects prospect replies, halts follow-up, and sends notification to founder@ornitech.in.
         """
-        if not settings.IMAP_USER or not settings.IMAP_PASS:
+        imap_user = settings.IMAP_USER or settings.SMTP_USER
+        imap_pass = settings.IMAP_PASS or settings.SMTP_PASS
+        if not imap_user or not imap_pass:
             logger.info("IMAP credentials not configured. Skipping live inbox reply polling.")
             return 0
 
         replies_detected = 0
         try:
-            mail = imaplib.IMAP4_SSL(settings.IMAP_SERVER)
-            mail.login(settings.IMAP_USER, settings.IMAP_PASS)
+            clean_pass = imap_pass.strip().replace(" ", "")
+            mail = imaplib.IMAP4_SSL(settings.IMAP_SERVER, settings.IMAP_PORT)
+            mail.login(imap_user, clean_pass)
             mail.select("INBOX")
 
             status, messages = mail.search(None, "UNSEEN")

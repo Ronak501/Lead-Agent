@@ -100,7 +100,8 @@ class SafeEmailSender:
 
                 with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15) as server:
                     server.starttls()
-                    server.login(settings.SMTP_USER, settings.SMTP_PASS)
+                    clean_smtp_pass = settings.SMTP_PASS.strip().replace(" ", "")
+                    server.login(settings.SMTP_USER, clean_smtp_pass)
                     server.send_message(msg)
 
                 logger.info(f"[LIVE SMTP DISPATCH] Sent live email to {to_email} via SMTP ({settings.SMTP_HOST})")

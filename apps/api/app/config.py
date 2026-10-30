@@ -37,7 +37,9 @@ class Settings(BaseSettings):
     SMTP_PORT: int = 587
     SMTP_USER: str = ""
     SMTP_PASS: str = ""
+    SMTP_USE_TLS: bool = True
     IMAP_SERVER: str = "imap.gmail.com"
+    IMAP_PORT: int = 993
     IMAP_USER: str = ""
     IMAP_PASS: str = ""
     AUTOPILOT_AUTO_RUN: bool = True

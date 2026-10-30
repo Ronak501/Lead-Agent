@@ -1664,7 +1664,8 @@ async def test_integration(provider_name: str):
             server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=8.0)
             if settings.SMTP_USE_TLS:
                 server.starttls()
-            server.login(settings.SMTP_USER, settings.SMTP_PASS)
+            clean_smtp_pass = settings.SMTP_PASS.strip().replace(" ", "")
+            server.login(settings.SMTP_USER, clean_smtp_pass)
             server.quit()
             return {"status": "ok", "provider": "smtp", "detail": f"SMTP handshake and login successful on {settings.SMTP_HOST}:{settings.SMTP_PORT} as {settings.SMTP_USER}."}
         except smtplib.SMTPAuthenticationError:
@@ -1681,17 +1682,20 @@ async def test_integration(provider_name: str):
             raise HTTPException(status_code=500, detail=f"SMTP error: {str(e)}")
 
     elif p == "imap":
-        if not (settings.IMAP_USER and settings.IMAP_PASS):
-            raise HTTPException(status_code=400, detail="Missing required configuration: 'IMAP_USER' or 'IMAP_PASS' is not set in your .env file.")
+        imap_user = settings.IMAP_USER or settings.SMTP_USER
+        imap_pass = settings.IMAP_PASS or settings.SMTP_PASS
+        if not (imap_user and imap_pass):
+            raise HTTPException(status_code=400, detail="Missing required configuration: 'IMAP_USER' or 'IMAP_PASS' (or 'SMTP_USER'/'SMTP_PASS') is not set in your .env file.")
         try:
+            clean_imap_pass = imap_pass.strip().replace(" ", "")
             mail = imaplib.IMAP4_SSL(settings.IMAP_SERVER, settings.IMAP_PORT)
-            mail.login(settings.IMAP_USER, settings.IMAP_PASS)
+            mail.login(imap_user, clean_imap_pass)
             mail.logout()
-            return {"status": "ok", "provider": "imap", "detail": f"IMAP connection and login successful on {settings.IMAP_SERVER}:{settings.IMAP_PORT} as {settings.IMAP_USER}."}
+            return {"status": "ok", "provider": "imap", "detail": f"IMAP connection and login successful on {settings.IMAP_SERVER}:{settings.IMAP_PORT} as {imap_user}."}
         except imaplib.IMAP4.error as imap_err:
             raise HTTPException(
                 status_code=400,
-                detail=f"IMAP Authentication Failed for 'IMAP_USER' ({settings.IMAP_USER}): {str(imap_err)}. For Gmail, verify IMAP is enabled and use a 16-character Google App Password."
+                detail=f"IMAP Authentication Failed for '{imap_user}': {str(imap_err)}. For Gmail, verify IMAP is enabled and use a 16-character Google App Password."
             )
         except (TimeoutError, OSError) as conn_err:
             raise HTTPException(
