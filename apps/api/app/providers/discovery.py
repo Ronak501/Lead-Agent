@@ -23,32 +23,58 @@ BLOCKED_SEARCH_DOMAINS = {
     "themanifest.com", "designrush.com", "sortlist.com", "softwaresuggest.com",
 }
 
+# Strict filter: Never pitch tech giants, developer infrastructure corporations, or large enterprises with massive in-house IT teams
+EXCLUDED_ENTERPRISE_DOMAINS = {
+    "google.com", "microsoft.com", "apple.com", "amazon.com", "meta.com",
+    "zoho.com", "freshworks.com", "postman.com", "browserstack.com",
+    "chargebee.com", "clevertap.com", "yellow.ai", "hasura.io",
+    "darwinbox.com", "urbancompany.com", "infosys.com", "tcs.com",
+    "wipro.com", "hcltech.com", "accenture.com", "cognizant.com",
+    "capgemini.com", "techmahindra.com", "ibm.com", "oracle.com",
+    "salesforce.com", "servicenow.com", "workday.com", "atlassian.com",
+    "adobe.com", "sap.com", "cisco.com", "intel.com", "dell.com",
+}
+
+# Curated High-Intent Registry: Real Indian & Global Startups, D2C Brands, and SMEs that actively require web/mobile development, feature acceleration, and ongoing tech support
 VERIFIED_B2B_REGISTRY = [
-    {"name": "Darwinbox", "domain": "darwinbox.com", "industry": "SaaS", "market": "India", "desc": "HR Tech & Enterprise HCM platform"},
-    {"name": "Postman", "domain": "postman.com", "industry": "Technology", "market": "Global", "desc": "API development and collaboration platform"},
-    {"name": "BrowserStack", "domain": "browserstack.com", "industry": "Technology", "market": "Global", "desc": "Web and mobile app testing platform"},
-    {"name": "Chargebee", "domain": "chargebee.com", "industry": "SaaS", "market": "Global", "desc": "Subscription billing and revenue management"},
-    {"name": "CleverTap", "domain": "clevertap.com", "industry": "SaaS", "market": "India", "desc": "Customer engagement and retention platform"},
-    {"name": "Yellow.ai", "domain": "yellow.ai", "industry": "AI", "market": "Global", "desc": "Conversational AI and customer support automation"},
-    {"name": "Hasura", "domain": "hasura.io", "industry": "Technology", "market": "Global", "desc": "GraphQL API and data federation engine"},
-    {"name": "InVideo", "domain": "invideo.io", "industry": "AI", "market": "Global", "desc": "AI video generation and editing platform"},
-    {"name": "Leena AI", "domain": "leena.ai", "industry": "AI", "market": "Global", "desc": "Autonomous enterprise employee experience agent"},
-    {"name": "Springworks", "domain": "springworks.in", "industry": "Startups", "market": "India", "desc": "HR tech and employee engagement tools"},
-    {"name": "Plum", "domain": "plumhq.com", "industry": "Startups", "market": "India", "desc": "Modern employee health benefits & insurance platform"},
-    {"name": "GrowthX", "domain": "growthx.club", "industry": "Startups", "market": "India", "desc": "Learning community and growth accelerator for founders"},
-    {"name": "Simplilearn", "domain": "simplilearn.com", "industry": "Technology", "market": "India", "desc": "Digital skills training and online bootcamp platform"},
-    {"name": "Progcap", "domain": "progcap.com", "industry": "Startups", "market": "India", "desc": "Fintech working capital for supply chains"},
-    {"name": "Kavach Tech", "domain": "kavach.in", "industry": "Technology", "market": "India", "desc": "Cybersecurity compliance and data protection"},
-    {"name": "Recko", "domain": "recko.io", "industry": "SaaS", "market": "India", "desc": "AI financial reconciliation and transaction lifecycle"},
-    {"name": "Entri", "domain": "entri.app", "industry": "Startups", "market": "India", "desc": "Local-language learning and test preparation app"},
-    {"name": "Classplus", "domain": "classplus.co", "industry": "Startups", "market": "India", "desc": "B2B SaaS platform for educators and creators"},
-    {"name": "Urban Company", "domain": "urbancompany.com", "industry": "Services", "market": "India", "desc": "On-demand home services platform"},
-    {"name": "Signzy", "domain": "signzy.com", "industry": "AI", "market": "India", "desc": "AI digital banking onboarding and KYC verification"},
-    {"name": "Perfios", "domain": "perfios.com", "industry": "Technology", "market": "India", "desc": "Real-time credit decisioning and fintech analytics"},
-    {"name": "Slice", "domain": "sliceit.com", "industry": "Startups", "market": "India", "desc": "Digital payments and consumer fintech app"},
-    {"name": "IndWealth", "domain": "indwealth.in", "industry": "Startups", "market": "India", "desc": "AI personal wealth advisory and fintech platform"},
-    {"name": "Zoho", "domain": "zoho.com", "industry": "SaaS", "market": "Global", "desc": "Suite of cloud business and CRM software"},
-    {"name": "Freshworks", "domain": "freshworks.com", "industry": "SaaS", "market": "Global", "desc": "Customer service and IT service management software"},
+    # --- E-Commerce & D2C Brands (Need web speed, custom Shopify/Next.js, mobile apps & tech maintenance) ---
+    {"name": "Mokobara", "domain": "mokobara.com", "industry": "E-commerce", "market": "India", "desc": "Design-first D2C luggage and travel accessories brand scaling digital presence"},
+    {"name": "Snitch", "domain": "snitch.co.in", "industry": "E-commerce", "market": "India", "desc": "Fast-fashion men's D2C brand with high-traffic web and mobile storefront"},
+    {"name": "The Whole Truth", "domain": "thewholetruthfoods.com", "industry": "E-commerce", "market": "India", "desc": "Clean-label healthy food D2C brand running custom digital store"},
+    {"name": "Bare Necessities", "domain": "barenecessities.in", "industry": "E-commerce", "market": "India", "desc": "Zero-waste lifestyle and sustainable personal care e-commerce brand"},
+    {"name": "TagZ Foods", "domain": "tagzfoods.com", "industry": "E-commerce", "market": "India", "desc": "Gen-Z focused healthy snack food and beverage startup"},
+    {"name": "Slurrp Farm", "domain": "slurrpfarm.com", "industry": "E-commerce", "market": "India", "desc": "Wholesome children nutrition food and parenting e-commerce brand"},
+    {"name": "Dot & Key", "domain": "dotandkey.com", "industry": "E-commerce", "market": "India", "desc": "Botanical skincare and cosmetics D2C digital brand"},
+    {"name": "Blue Tokai Coffee", "domain": "bluetokaicoffee.com", "industry": "E-commerce", "market": "India", "desc": "Artisan specialty coffee roaster with omnichannel subscription web app"},
+
+    # --- Seed & Early-Stage Startups (Need MVP building, feature velocity & dedicated tech support) ---
+    {"name": "Even Healthcare", "domain": "even.in", "industry": "HealthTech", "market": "India", "desc": "Preventative primary healthcare and clinic membership startup"},
+    {"name": "Loop Health", "domain": "loophealth.com", "industry": "HealthTech", "market": "India", "desc": "Modern employee healthcare benefits and medical consultation platform"},
+    {"name": "Clinikk", "domain": "clinikk.com", "industry": "HealthTech", "market": "India", "desc": "Outpatient primary healthcare network and patient management app"},
+    {"name": "Grip Invest", "domain": "gripinvest.in", "industry": "FinTech", "market": "India", "desc": "Digital investment discovery platform for alternative fixed-income assets"},
+    {"name": "Wint Wealth", "domain": "wintwealth.com", "industry": "FinTech", "market": "India", "desc": "Retail debt investment platform democratizing corporate bonds"},
+    {"name": "Jar App", "domain": "myjar.app", "industry": "FinTech", "market": "India", "desc": "Automated micro-savings and digital gold investment app for millennials"},
+    {"name": "Klub Works", "domain": "klubworks.com", "industry": "FinTech", "market": "India", "desc": "Revenue-based financing and growth capital platform for local brands"},
+    {"name": "Rupifi", "domain": "rupifi.com", "industry": "FinTech", "market": "India", "desc": "Embedded B2B credit platform powering marketplace transactions"},
+
+    # --- EdTech & Skill Learning Platforms (Need LMS apps, student portals & interactive web apps) ---
+    {"name": "Newton School", "domain": "newtonschool.co", "industry": "EdTech", "market": "India", "desc": "Outcome-oriented tech education and developer training institute"},
+    {"name": "Vidyakul", "domain": "vidyakul.com", "industry": "EdTech", "market": "India", "desc": "Regional language Bharat learning platform for K-12 students"},
+    {"name": "Masai School", "domain": "masaischool.com", "industry": "EdTech", "market": "India", "desc": "Skill development institute with intensive coding bootcamps"},
+
+    # --- SME, Supply Chain & Logistics Tech (Need custom ERPs, portals & 24/7 tech maintenance) ---
+    {"name": "FloBiz", "domain": "flobiz.in", "industry": "SaaS", "market": "India", "desc": "Invoicing, GST billing, and inventory mobile app for small enterprises (myBillBook)"},
+    {"name": "Kirana Club", "domain": "kiranaclub.com", "industry": "Startups", "market": "India", "desc": "Digital community and wholesale supply platform for local retail shops"},
+    {"name": "PagarBook", "domain": "pagarbook.com", "industry": "Startups", "market": "India", "desc": "Staff attendance, salary calculation, and payroll app for Indian businesses"},
+    {"name": "Locofast", "domain": "locofast.com", "industry": "Logistics", "market": "India", "desc": "B2B textile fabric procurement and smart manufacturing supply chain platform"},
+    {"name": "Bijnis", "domain": "bijnis.com", "industry": "Startups", "market": "India", "desc": "Factory digitizing software and B2B marketplace for manufacturers"},
+    {"name": "Agrizy", "domain": "agrizy.in", "industry": "Logistics", "market": "India", "desc": "Processed agri-commodity marketplace and supply chain platform"},
+    {"name": "Agrim", "domain": "agrim.app", "industry": "Logistics", "market": "India", "desc": "B2B agri-inputs commerce platform connecting rural retailers with manufacturers"},
+    {"name": "Fleetx", "domain": "fleetx.io", "industry": "Logistics", "market": "India", "desc": "Intelligent fleet tracking, IoT sensors, and logistics analytics startup"},
+    {"name": "SuperK", "domain": "superk.in", "industry": "Retail", "market": "India", "desc": "Tech-driven franchised mini-supermarket chain in tier 3/4 towns"},
+    {"name": "Curefoods", "domain": "curefoods.in", "industry": "FoodTech", "market": "India", "desc": "Multi-brand cloud kitchen platform scaling food delivery operations"},
+    {"name": "Sprinto", "domain": "sprinto.com", "industry": "SaaS", "market": "Global", "desc": "SOC 2 and security compliance automation for fast-growing startups"},
+    {"name": "Kula", "domain": "kula.ai", "industry": "SaaS", "market": "Global", "desc": "Recruiting and talent discovery automation platform for founders"},
 ]
 
 
@@ -251,12 +277,13 @@ class CompanyDiscoveryProvider:
         clean_search_term, tags, locations = parse_search_query(query, industry, market)
         fetch_size = min(max(limit, 10), 25)
 
-        # 1. Try organizations/search with full-text search term & parsed locations
+        # 1. Try organizations/search with full-text search term & parsed locations (filtered strictly to 1-50 employee startups)
         try:
             async with httpx.AsyncClient(timeout=14.0) as client:
                 org_payload: dict[str, Any] = {
                     "page": page,
                     "per_page": fetch_size,
+                    "organization_num_employees_ranges": ["1,10", "11,20", "21,50"],
                 }
                 if clean_search_term:
                     org_payload["q_organization_search_term"] = clean_search_term
@@ -285,6 +312,7 @@ class CompanyDiscoveryProvider:
                         "page": page,
                         "per_page": fetch_size,
                         "q_organization_keyword_tags": tags[:3],
+                        "organization_num_employees_ranges": ["1,10", "11,20", "21,50"],
                     }
                     if locations:
                         tags_payload["organization_locations"] = locations
@@ -325,7 +353,12 @@ class CompanyDiscoveryProvider:
                 for org in organizations:
                     raw_domain = org.get("primary_domain")
                     norm_dom = normalize_domain(raw_domain)
-                    if not norm_dom or norm_dom in BLOCKED_SEARCH_DOMAINS:
+                    if not norm_dom or norm_dom in BLOCKED_SEARCH_DOMAINS or norm_dom in EXCLUDED_ENTERPRISE_DOMAINS:
+                        continue
+
+                    # Filter out established enterprises with large in-house IT departments (>75 employees)
+                    est_emp = org.get("estimated_num_employees") or 0
+                    if est_emp > 75:
                         continue
 
                     company_name = org.get("name") or norm_dom.split(".")[0].title()
@@ -398,8 +431,8 @@ class CompanyDiscoveryProvider:
         service_target: str,
         limit: int,
     ) -> list[dict[str, Any]]:
-        """Live web search to discover real company domains and public snippets."""
-        search_terms = f"{query} {industry} company website {market}".strip()
+        """Live web search to discover real company domains and public snippets targeting startups and growth businesses."""
+        search_terms = f"{query} early stage startup OR brand {market} website".strip()
         search_url = f"https://html.duckduckgo.com/html/?q={search_terms}"
 
         try:
@@ -431,7 +464,7 @@ class CompanyDiscoveryProvider:
                     parsed = urlparse(target_url)
                     norm_domain = normalize_domain(parsed.netloc or parsed.path)
 
-                    if not norm_domain or norm_domain in BLOCKED_SEARCH_DOMAINS or norm_domain in seen_domains:
+                    if not norm_domain or norm_domain in BLOCKED_SEARCH_DOMAINS or norm_domain in EXCLUDED_ENTERPRISE_DOMAINS or norm_domain in seen_domains:
                         continue
 
                     seen_domains.add(norm_domain)

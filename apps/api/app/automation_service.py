@@ -271,9 +271,11 @@ class AutomationEngine:
 
     @classmethod
     async def discover_leads_for_campaign(cls, campaign: Campaign, db: Session, limit: int = 5) -> List[Lead]:
-        """Auto-discovers, verifies, and records real prospective leads for an active campaign with multi-page resilience."""
-        query = campaign.company_type or (campaign.industries[0] if campaign.industries else "Technology")
-        service_target = campaign.services[0] if campaign.services else "Website redesign"
+        """Auto-discovers, verifies, and records real prospective startup leads for an active campaign with multi-page resilience."""
+        base_query = campaign.company_type or (campaign.industries[0] if campaign.industries else "Startups")
+        # Ensure discovery queries strictly target startups and growth businesses needing tech support/development
+        query = base_query if any(k in base_query.lower() for k in ("startup", "d2c", "brand", "sme", "early")) else f"{base_query} startup"
+        service_target = campaign.services[0] if campaign.services else "Custom software development and tech support"
         market = campaign.target_country or "India"
         if campaign.target_city and campaign.target_city.lower() not in ("all", "global"):
             market = f"{campaign.target_city}, {market}"

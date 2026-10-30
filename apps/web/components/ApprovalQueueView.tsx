@@ -165,14 +165,14 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
 
                     <div className="mt-2.5 pt-2 border-t border-[#ddd5c3] flex items-center justify-between text-[10px] text-[#694737]">
                       <div className="flex items-center gap-1.5 truncate">
-                        {draft.model.includes('Angle A') && (
+                        {(draft.model.includes('Angle A') || draft.subject.toLowerCase().includes('tech support') || draft.subject.toLowerCase().includes('bandwidth')) && (
                           <span className="px-1.5 py-0.5 rounded-full bg-[#35422d]/15 text-[#35422d] font-semibold text-[9px] border border-[#35422d]/30 shrink-0">
-                            ⚡ Angle A
+                            ⚡ Angle A (Tech Support)
                           </span>
                         )}
-                        {draft.model.includes('Angle B') && (
+                        {(draft.model.includes('Angle B') || draft.subject.toLowerCase().includes('conversion') || draft.subject.toLowerCase().includes('optimize')) && (
                           <span className="px-1.5 py-0.5 rounded-full bg-[#ad7d62]/15 text-[#694737] font-semibold text-[9px] border border-[#ad7d62]/30 shrink-0">
-                            📈 Angle B
+                            📈 Angle B (Growth)
                           </span>
                         )}
                         <span className="truncate">{draft.model}</span>

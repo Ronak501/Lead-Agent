@@ -47,22 +47,23 @@ class EmailDraftProvider:
         sender_website = settings.SENDER_WEBSITE or "https://ornitech.in"
 
         angle_focus = (
-            "Focus on technical audit observations, page latency, and modern frontend stack improvements (Angle A: Technical Performance)."
+            "Focus on technical debt, website latency, bug resolution, and on-demand tech support / dev bandwidth (Angle A: Tech Support & Engineering Velocity)."
             if angle == "A"
-            else "Focus on mobile user experience friction, conversion rate optimization, and lost visitor retention (Angle B: Conversion & ROI)."
+            else "Focus on mobile user experience friction, checkout/conversion rate drop-offs, and scaling customer retention (Angle B: Conversion & Growth)."
         )
 
-        prompt = f"""You are an expert B2B copywriter for high-converting, human-approved cold emails.
+        prompt = f"""You are an elite B2B copywriter representing Ornitech Solutions ({sender_website}), an agile software engineering & dedicated tech support partner for high-growth startups and modern digital brands.
 Follow these STRICT rules:
-1. NEVER invent facts, metrics, fake clients, or imaginary mutual acquaintances.
-2. Ground the opening observation directly in this verified evidence: "{observation}".
-3. Pitch Strategy: {angle_focus}
-4. Keep the email under 120 words. Direct, respectful, conversational.
-5. Pitch this specific capability: "{service_offer}".
-6. Tone: {tone}.
-7. Include a low-friction question at the end (e.g. "Would you be open to a 10-minute chat or should I send a 2-minute Loom teardown?").
-8. Add an opt-out line: "If this isn't relevant, just let me know and I won't follow up."
-9. Sign off the email with this EXACT sender sign-off at the end:
+1. Target Audience: The recipient is a busy startup founder, CEO, or technical decision-maker. They are strapped for engineering bandwidth and value fast, reliable execution.
+2. Core Pitch: We provide on-demand developer pods, Next.js/React web & mobile app engineering, and 24/7 technical support—helping lean startup teams ship features 40% faster and eliminate tech debt without hiring expensive in-house headcount.
+3. Ground the opening observation directly in this verified evidence: "{observation}".
+4. Pitch Strategy: {angle_focus}
+5. Keep the email under 100 words. Direct, respectful, conversational, and tailored to a startup founder.
+6. Pitch this specific capability: "{service_offer}".
+7. Tone: {tone}.
+8. Include a low-friction question at the end (e.g. "Would you be open to a 10-minute chat this week, or should I send a 2-minute Loom teardown with ideas for {company_name}?").
+9. Add an opt-out line: "If this isn't relevant right now, reply 'pass' and I won't follow up."
+10. Sign off the email with this EXACT sender sign-off at the end:
 Best regards,
 {sender_name}
 {sender_title}
@@ -191,18 +192,33 @@ Respond ONLY with a JSON object in this exact schema:
         if diagnostics:
             logger.info(f"AI Drafting Fallback active due to provider diagnostics: {'; '.join(diagnostics)}")
         recipient_salutation = f"Hi {contact_name.split()[0]}" if contact_name else "Hi there"
-        subject = f"An idea for {company_name}'s web presence"
-        body = (
-            f"{recipient_salutation},\n\n"
-            f"I came across {company_name} and took a look at your website. {observation}.\n\n"
-            f"We specialize in {service_offer.strip().lower()} at Ornitech Solutions ({sender_website}), helping modern companies upgrade their tech stack, accelerate page speeds, and improve visitor conversions.\n\n"
-            "Would you be open to a quick 10-minute conversation next week, or would you prefer a quick 2-minute video teardown of what we'd improve?\n\n"
-            "If this isn't a priority right now, just reply and let me know and I will not follow up.\n\n"
-            "Best regards,\n"
-            f"{sender_name}\n"
-            f"{sender_title}\n"
-            f"{sender_website}"
-        )
+
+        if angle == "A":
+            subject = f"Tech support & dev bandwidth for {company_name}"
+            body = (
+                f"{recipient_salutation},\n\n"
+                f"I was reviewing {company_name}'s web presence at {website_url or 'your site'}. {observation}.\n\n"
+                f"At Ornitech Solutions ({sender_website}), we act as an agile, on-demand engineering & 24/7 tech support partner for fast-growing startups. We help lean teams ship new features faster, resolve tech debt, and keep web & mobile platforms at peak performance without the high cost of hiring full-time senior developers.\n\n"
+                f"Would you be open to a quick 10-minute chat this week, or should I send a 2-minute Loom teardown with specific suggestions for {company_name}?\n\n"
+                "If this isn't a priority right now, just reply 'pass' and I will not follow up.\n\n"
+                "Best regards,\n"
+                f"{sender_name}\n"
+                f"{sender_title}\n"
+                f"{sender_website}"
+            )
+        else:
+            subject = f"Quick idea to optimize {company_name}'s site performance & conversion"
+            body = (
+                f"{recipient_salutation},\n\n"
+                f"I came across {company_name} and took a close look at your website. {observation}.\n\n"
+                f"We specialize in {service_offer.strip().lower()} at Ornitech Solutions ({sender_website}). We help modern startups and digital brands eliminate mobile friction, boost page speeds, and convert more visitors into active customers.\n\n"
+                f"Would you be open to a 10-minute intro call next week, or would you prefer a quick 2-minute video walkthrough of what we'd improve?\n\n"
+                "If this isn't relevant right now, reply 'pass' and I will not follow up.\n\n"
+                "Best regards,\n"
+                f"{sender_name}\n"
+                f"{sender_title}\n"
+                f"{sender_website}"
+            )
 
         confidence = 0.85 if evidence_excerpts else 0.70
         return {
@@ -210,7 +226,7 @@ Respond ONLY with a JSON object in this exact schema:
             "body_text": body,
             "evidence_urls": evidence_urls,
             "confidence": confidence,
-            "model": f"grounded-heuristic-engine [Angle {angle}]",
+            "model": "grounded-heuristic-engine",
             "angle": angle,
         }
 

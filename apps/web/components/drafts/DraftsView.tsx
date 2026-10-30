@@ -77,14 +77,14 @@ export function DraftsView() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 text-xs text-[#694737] shrink-0 font-sans">
-                  {d.model.includes('Angle A') && (
+                  {(d.model.includes('Angle A') || d.subject.toLowerCase().includes('tech support') || d.subject.toLowerCase().includes('bandwidth')) && (
                     <span className="px-2.5 py-0.5 rounded-full bg-[#35422d]/15 text-[#35422d] font-semibold text-[10px] border border-[#35422d]/30">
-                      ⚡ Angle A: Tech &amp; Speed
+                      ⚡ Angle A: Tech Support &amp; Speed
                     </span>
                   )}
-                  {d.model.includes('Angle B') && (
+                  {(d.model.includes('Angle B') || d.subject.toLowerCase().includes('conversion') || d.subject.toLowerCase().includes('optimize')) && (
                     <span className="px-2.5 py-0.5 rounded-full bg-[#ad7d62]/15 text-[#694737] font-semibold text-[10px] border border-[#ad7d62]/30">
-                      📈 Angle B: Conversion &amp; ROI
+                      📈 Angle B: Conversion &amp; Growth
                     </span>
                   )}
                   <span>
