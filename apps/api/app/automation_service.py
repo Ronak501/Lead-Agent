@@ -156,6 +156,7 @@ def send_reply_notification_email(
     reply_body: str,
     from_email: str,
     ai_analysis: Optional[dict] = None,
+    auto_replied: bool = False,
 ) -> bool:
     """Dispatches instant email alert to founder@ornitech.in when a prospect replies to cold outreach, enriched with AI sentiment & booking suggestions."""
     admin_recipient = settings.ADMIN_NOTIFICATION_EMAIL or "founder@ornitech.in"
@@ -175,9 +176,19 @@ def send_reply_notification_email(
 
     subject = f"{'🔥' if sentiment == 'positive' else '✉️'} [{status_label}] {contact_name} from {company_name} replied to outreach!"
 
+    auto_reply_banner = ""
+    if auto_replied:
+        auto_reply_banner = """
+        <div style="background-color: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 6px; padding: 10px 14px; margin-bottom: 16px; color: #065f46; font-size: 13px; font-weight: 600;">
+          ⚡ Zero-Touch Auto-Responder Dispatched: Your calendar booking link (https://cal.com/ornitech/intro) has been automatically sent to this prospect!
+        </div>
+        """
+
     ai_section_html = ""
     if ai_analysis:
         ai_section_html = f"""
+        {auto_reply_banner}
+        <div style="background-color: #f1f5f9; border-left: 4px solid {badge_bg}; padding: 14px; border-radius: 4px; margin-bottom: 20px;">
         <div style="background-color: #f1f5f9; border-left: 4px solid {badge_bg}; padding: 14px; border-radius: 4px; margin-bottom: 20px;">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
             <p style="margin: 0; font-size: 15px; font-weight: 700; color: #0f172a;">AI Reply Intelligence</p>
@@ -522,11 +533,14 @@ class AutomationEngine:
                     db.add(ev)
             db.flush()
 
-        # 2. Generate personalized draft
+        # 2. Generate personalized draft with A/B Angle testing
         audit_findings = latest_audit.issues_found if latest_audit else [
             "Page load latency exceeding 3.2 seconds",
             "Mobile layout rendering shifts on small screens"
         ]
+
+        total_drafts_count = db.query(EmailDraft).count()
+        angle = "A" if (total_drafts_count % 2 == 0) else "B"
 
         draft_res = await draft_provider.generate(
             company_name=company.name,
@@ -537,6 +551,7 @@ class AutomationEngine:
             tone="authoritative and consultative",
             evidence_list=[],
             audit_findings=audit_findings,
+            angle=angle,
         )
 
         content_hash = EmailDraftProvider.compute_content_hash(draft_res["subject"], draft_res["body_text"])
@@ -782,8 +797,46 @@ class AutomationEngine:
 
                     db.commit()
 
+                    # Step 3: Zero-Touch Autonomous Meeting Auto-Responder
+                    auto_replied = False
+                    if (
+                        getattr(settings, "AUTO_REPLY_MEETING_LINK", True)
+                        and settings.EMAIL_SENDING_ENABLED
+                        and settings.SMTP_USER
+                        and settings.SMTP_PASS
+                        and ai_analysis.get("sentiment") == "positive"
+                        and ai_analysis.get("suggested_reply")
+                    ):
+                        try:
+                            reply_msg = MIMEMultipart("alternative")
+                            clean_subj = subject if subject.lower().startswith("re:") else f"Re: {subject}"
+                            reply_msg["Subject"] = clean_subj
+                            reply_msg["From"] = f"{settings.SENDER_NAME} <{settings.SENDER_EMAIL or settings.SMTP_USER}>"
+                            reply_msg["To"] = from_email
+                            reply_msg.attach(MIMEText(ai_analysis["suggested_reply"], "plain"))
+
+                            with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15) as s_server:
+                                s_server.starttls()
+                                clean_pass = settings.SMTP_PASS.strip().replace(" ", "")
+                                s_server.login(settings.SMTP_USER, clean_pass)
+                                s_server.send_message(reply_msg)
+
+                            auto_replied = True
+                            logger.info(f"⚡ Zero-Touch Meeting Auto-Responder sent booking link to {from_email}!")
+                            if draft:
+                                auto_event = EmailEvent(
+                                    draft_id=draft.id,
+                                    event_type="auto_reply_sent",
+                                    provider="autonomous_responder",
+                                    details=json.dumps({"recipient": from_email, "text": ai_analysis["suggested_reply"][:200]}),
+                                )
+                                db.add(auto_event)
+                                db.commit()
+                        except Exception as auto_err:
+                            logger.warning(f"Failed to dispatch auto-meeting reply: {auto_err}")
+
                     # Trigger instant email notification to founder@ornitech.in with AI intelligence
-                    send_reply_notification_email(lead, subject, reply_text, from_email, ai_analysis=ai_analysis)
+                    send_reply_notification_email(lead, subject, reply_text, from_email, ai_analysis=ai_analysis, auto_replied=auto_replied)
                     replies_detected += 1
 
             mail.logout()

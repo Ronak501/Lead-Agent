@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Campaign, Lead, Draft, Suppression, Integration, Analytics } from '../components/types';
+import { Campaign, Lead, Draft, Suppression, Integration, Analytics, AgentActivityItem, DailyPaceData } from '../components/types';
 
 export const API = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
@@ -30,6 +30,12 @@ interface AppContextType {
   suppressions: Suppression[];
   integrations: Integration[];
   analytics: Analytics;
+  agentActivities: AgentActivityItem[];
+  agentStatus: string;
+  agentLastRun: string | null;
+  dailyPace: DailyPaceData | null;
+  fetchAgentActivities: () => Promise<void>;
+  fetchDailyPace: () => Promise<void>;
   fetchData: () => Promise<void>;
   handleRunAutonomousPipeline: () => Promise<void>;
   handleBatchAutoDispatch: () => Promise<void>;
@@ -80,6 +86,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     suppressed_count: 0,
     conversion_rate: 0,
   });
+  const [agentActivities, setAgentActivities] = useState<AgentActivityItem[]>([]);
+  const [agentStatus, setAgentStatus] = useState<string>('active');
+  const [agentLastRun, setAgentLastRun] = useState<string | null>(null);
+  const [dailyPace, setDailyPace] = useState<DailyPaceData | null>(null);
 
   const notify = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
     setNotification({ message, type });
@@ -115,9 +125,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const fetchAgentActivities = async () => {
+    try {
+      const res = await fetch(`${API}/api/agent/activity-feed`);
+      if (res.ok) {
+        const data = await res.json();
+        setAgentActivities(data.activities || []);
+        if (data.agent_status) setAgentStatus(data.agent_status);
+        if (data.last_run_at) setAgentLastRun(data.last_run_at);
+      }
+    } catch {
+      // quiet fallback
+    }
+  };
+
+  const fetchDailyPace = async () => {
+    try {
+      const res = await fetch(`${API}/api/deliverability/daily-pace`);
+      if (res.ok) {
+        const data = await res.json();
+        setDailyPace(data);
+      }
+    } catch {
+      // quiet fallback
+    }
+  };
+
   const fetchData = async () => {
     try {
-      const [hRes, cRes, lRes, dRes, sRes, iRes, aRes] = await Promise.all([
+      const [hRes, cRes, lRes, dRes, sRes, iRes, aRes, actRes, dpRes] = await Promise.all([
         fetch(`${API}/health`).catch(() => null),
         fetch(`${API}/api/campaigns`).catch(() => null),
         fetch(`${API}/api/leads`).catch(() => null),
@@ -125,6 +161,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         fetch(`${API}/api/suppressions`).catch(() => null),
         fetch(`${API}/api/integrations`).catch(() => null),
         fetch(`${API}/api/analytics`).catch(() => null),
+        fetch(`${API}/api/agent/activity-feed`).catch(() => null),
+        fetch(`${API}/api/deliverability/daily-pace`).catch(() => null),
       ]);
 
       if (hRes && hRes.ok) {
@@ -139,6 +177,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (sRes && sRes.ok) setSuppressions(await sRes.json());
       if (iRes && iRes.ok) setIntegrations(await iRes.json());
       if (aRes && aRes.ok) setAnalytics(await aRes.json());
+
+      if (actRes && actRes.ok) {
+        const actData = await actRes.json();
+        setAgentActivities(actData.activities || []);
+        if (actData.agent_status) setAgentStatus(actData.agent_status);
+        if (actData.last_run_at) setAgentLastRun(actData.last_run_at);
+      }
+
+      if (dpRes && dpRes.ok) {
+        const dpData = await dpRes.json();
+        setDailyPace(dpData);
+      }
     } catch {
       setApiStatus('offline');
     }
@@ -586,6 +636,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         suppressions,
         integrations,
         analytics,
+        agentActivities,
+        agentStatus,
+        agentLastRun,
+        dailyPace,
+        fetchAgentActivities,
+        fetchDailyPace,
         fetchData,
         handleRunAutonomousPipeline,
         handleBatchAutoDispatch,

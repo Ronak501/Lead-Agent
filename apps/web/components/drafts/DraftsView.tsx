@@ -76,11 +76,21 @@ export function DraftsView() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 text-xs text-[#694737] shrink-0 font-sans">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-[#694737] shrink-0 font-sans">
+                  {d.model.includes('Angle A') && (
+                    <span className="px-2.5 py-0.5 rounded-full bg-[#35422d]/15 text-[#35422d] font-semibold text-[10px] border border-[#35422d]/30">
+                      ⚡ Angle A: Tech &amp; Speed
+                    </span>
+                  )}
+                  {d.model.includes('Angle B') && (
+                    <span className="px-2.5 py-0.5 rounded-full bg-[#ad7d62]/15 text-[#694737] font-semibold text-[10px] border border-[#ad7d62]/30">
+                      📈 Angle B: Conversion &amp; ROI
+                    </span>
+                  )}
                   <span>
                     Confidence: <span className="font-serif font-semibold text-[#29251d]">{Math.round(d.confidence * 100)}%</span>
                   </span>
-                  <span>· Model: {d.model}</span>
+                  <span>· {d.model}</span>
                 </div>
               </div>
 

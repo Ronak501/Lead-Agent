@@ -76,6 +76,8 @@ from .schemas import (
     ReplyClassificationRequest,
     ReplyClassificationResponse,
     FollowupDraftRequest,
+    AgentActivityItem,
+    AgentActivityFeedResponse,
 )
 from .providers.discovery import (
     CompanyDiscoveryProvider,
@@ -2617,5 +2619,189 @@ def get_automation_status(db: Session = Depends(get_db)):
         "live_sending_enabled": settings.EMAIL_SENDING_ENABLED,
         "auto_interval_minutes": settings.AUTOPILOT_INTERVAL_MINUTES,
     }
+
+
+# ==================== AGENT LIVE STREAM & ACTIVITY FEED ====================
+
+@router.get("/agent/activity-feed", response_model=AgentActivityFeedResponse)
+def get_agent_activity_feed(limit: int = 15, db: Session = Depends(get_db)):
+    """Returns a real-time autonomous agent activity stream (Explee-style live feed) showing recent discoveries, audits, pitches and replies."""
+    ws_id = get_current_workspace_id()
+    activities: list[AgentActivityItem] = []
+
+    # 1. Recent Email Events (dispatches and replies)
+    events = (
+        db.query(EmailEvent)
+        .join(EmailDraft, EmailDraft.id == EmailEvent.draft_id)
+        .join(Lead, Lead.id == EmailDraft.lead_id)
+        .join(Company, Company.id == Lead.company_id)
+        .filter(Company.workspace_id == ws_id)
+        .order_by(EmailEvent.occurred_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+    for ev in events:
+        details = {}
+        try:
+            details = json.loads(ev.details) if ev.details else {}
+        except Exception:
+            pass
+
+        lead = ev.draft.lead if ev.draft else None
+        company_name = lead.company.name if lead and lead.company else "Prospect"
+        contact_name = lead.contact.full_name if lead and lead.contact else "Executive"
+
+        if ev.event_type == "sent":
+            activities.append(AgentActivityItem(
+                id=f"act_ev_{ev.id}",
+                type="dispatch",
+                title=f"Dispatched Pitch to {company_name}",
+                description=f"Sent 1-on-1 personalized pitch to {contact_name} via {settings.SENDER_EMAIL or 'Google Workspace SMTP'}",
+                timestamp=ev.occurred_at,
+                status="sent",
+                badge="Dispatched",
+                link="/drafts",
+            ))
+        elif ev.event_type == "replied":
+            sentiment = details.get("ai_sentiment", "positive")
+            intent = details.get("ai_intent", "meeting_request").replace("_", " ").title()
+            activities.append(AgentActivityItem(
+                id=f"act_ev_{ev.id}",
+                type="reply",
+                title=f"Inbound Reply from {company_name}",
+                description=f"Prospect replied: '{details.get('reply_snippet', '')[:80]}...'. AI Intent: {intent}.",
+                timestamp=ev.occurred_at,
+                status=sentiment,
+                badge=f"🔥 {intent}" if sentiment == "positive" else intent,
+                link="/review",
+            ))
+        elif ev.event_type == "auto_reply_sent":
+            activities.append(AgentActivityItem(
+                id=f"act_ev_{ev.id}",
+                type="reply",
+                title=f"Auto-Booked Meeting with {company_name}",
+                description=f"Zero-Touch AI Auto-Responder dispatched calendar booking link (https://cal.com/ornitech/intro) to {details.get('recipient')}.",
+                timestamp=ev.occurred_at,
+                status="positive",
+                badge="⚡ Auto-Booked",
+                link="/drafts",
+            ))
+
+    # 2. Recent Website Audits
+    audits = (
+        db.query(WebsiteAudit)
+        .join(Company, Company.id == WebsiteAudit.company_id)
+        .filter(Company.workspace_id == ws_id)
+        .order_by(WebsiteAudit.checked_at.desc())
+        .limit(limit)
+        .all()
+    )
+    for au in audits:
+        comp = au.company
+        activities.append(AgentActivityItem(
+            id=f"act_au_{au.id}",
+            type="audit",
+            title=f"Audited {comp.domain or comp.name}",
+            description=f"Performance Score: {au.performance_score}/100. Observed: {au.opportunity_summary[:100]}",
+            timestamp=au.checked_at,
+            status="audited",
+            badge=f"Score {au.performance_score}/100",
+            link="/leads",
+        ))
+
+    # 3. Recent Discovered Leads
+    recent_leads = (
+        db.query(Lead)
+        .join(Company, Company.id == Lead.company_id)
+        .filter(Company.workspace_id == ws_id)
+        .order_by(Lead.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    for ld in recent_leads:
+        comp = ld.company
+        cnt = ld.contact
+        source = (cnt.source_provider if cnt and cnt.source_provider else "waterfall_crawler")
+        activities.append(AgentActivityItem(
+            id=f"act_ld_{ld.id}",
+            type="discovery",
+            title=f"Discovered {comp.name}",
+            description=f"Identified {cnt.full_name if cnt else 'Decision Maker'} ({cnt.title if cnt else 'Executive'}) with {cnt.email_status if cnt else 'verified'} email at {comp.domain}.",
+            timestamp=ld.created_at,
+            status="qualified",
+            badge=source.replace("_", " ").title(),
+            link="/leads",
+        ))
+
+    # 4. Recent Suppressions
+    suppressions = (
+        db.query(Suppression)
+        .filter_by(workspace_id=ws_id)
+        .order_by(Suppression.created_at.desc())
+        .limit(5)
+        .all()
+    )
+    for sp in suppressions:
+        activities.append(AgentActivityItem(
+            id=f"act_sp_{sp.id}",
+            type="suppression",
+            title=f"Opt-Out Guard: {sp.email_normalized}",
+            description=f"Protected contact from all outreach campaigns (Reason: {sp.reason}). Anti-spam compliance enforced.",
+            timestamp=sp.created_at,
+            status="suppressed",
+            badge="Auto-Suppressed",
+            link="/settings",
+        ))
+
+    # Sort all activities descending by timestamp
+    activities.sort(key=lambda x: x.timestamp, reverse=True)
+    trimmed = activities[:limit]
+
+    return AgentActivityFeedResponse(
+        agent_status="active",
+        interval_minutes=settings.AUTOPILOT_INTERVAL_MINUTES,
+        last_run_at=trimmed[0].timestamp if trimmed else None,
+        activities=trimmed,
+    )
+
+
+# ==================== DAILY SENDING PACE & DELIVERABILITY SAFEGUARD ====================
+
+@router.get("/deliverability/daily-pace")
+def get_daily_sending_pace(db: Session = Depends(get_db)):
+    """Calculates daily sending volume, warmup pacing, and deliverability quota."""
+    ws_id = get_current_workspace_id()
+    now = datetime.now(timezone.utc)
+    start_of_day = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
+
+    # Count emails dispatched today
+    sent_today = (
+        db.query(EmailDraft)
+        .join(Lead, Lead.id == EmailDraft.lead_id)
+        .join(Company, Company.id == Lead.company_id)
+        .filter(
+            Company.workspace_id == ws_id,
+            EmailDraft.status.in_(["sent", "replied"]),
+            EmailDraft.sent_at >= start_of_day,
+        )
+        .count()
+    )
+
+    limit = settings.DAILY_SEND_LIMIT or 50
+    percentage = min(100, int((sent_today / limit) * 100)) if limit > 0 else 0
+
+    return {
+        "sent_today": sent_today,
+        "daily_limit": limit,
+        "percentage": percentage,
+        "safe_remaining": max(0, limit - sent_today),
+        "warmup_mode": True,
+        "stagger_delay_seconds": settings.OUTREACH_STAGGER_DELAY_SECONDS,
+        "live_sending_enabled": settings.EMAIL_SENDING_ENABLED,
+        "sender_email": settings.SENDER_EMAIL or "founder@ornitech.in",
+        "status": "safe" if sent_today < limit else "daily_limit_reached",
+    }
+
 
 

@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     AUTOPILOT_INTERVAL_MINUTES: int = 15
     DAILY_SEND_LIMIT: int = 100
     OUTREACH_STAGGER_DELAY_SECONDS: float = 2.0
+    AUTO_REPLY_MEETING_LINK: bool = True
+    CAL_BOOKING_URL: str = "https://cal.com/ornitech/intro"
 
 
 settings = Settings()

@@ -164,8 +164,20 @@ export const ApprovalQueueView: React.FC<ApprovalQueueViewProps> = ({
                     <div className="text-xs text-[#29251d] truncate font-medium">"{draft.subject}"</div>
 
                     <div className="mt-2.5 pt-2 border-t border-[#ddd5c3] flex items-center justify-between text-[10px] text-[#694737]">
-                      <span>Model: {draft.model}</span>
-                      <span>Confidence: {(draft.confidence * 100).toFixed(0)}%</span>
+                      <div className="flex items-center gap-1.5 truncate">
+                        {draft.model.includes('Angle A') && (
+                          <span className="px-1.5 py-0.5 rounded-full bg-[#35422d]/15 text-[#35422d] font-semibold text-[9px] border border-[#35422d]/30 shrink-0">
+                            ⚡ Angle A
+                          </span>
+                        )}
+                        {draft.model.includes('Angle B') && (
+                          <span className="px-1.5 py-0.5 rounded-full bg-[#ad7d62]/15 text-[#694737] font-semibold text-[9px] border border-[#ad7d62]/30 shrink-0">
+                            📈 Angle B
+                          </span>
+                        )}
+                        <span className="truncate">{draft.model}</span>
+                      </div>
+                      <span className="shrink-0 ml-1">{(draft.confidence * 100).toFixed(0)}% Conf</span>
                     </div>
                   </div>
                 );

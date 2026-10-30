@@ -119,6 +119,36 @@ export type Analytics = {
   conversion_rate: number;
 };
 
+export type AgentActivityItem = {
+  id: string;
+  type: string;
+  title: string;
+  description: string;
+  timestamp: string;
+  status: string;
+  badge?: string | null;
+  link?: string | null;
+};
+
+export type AgentActivityFeedResponse = {
+  agent_status: string;
+  interval_minutes: number;
+  last_run_at?: string | null;
+  activities: AgentActivityItem[];
+};
+
+export type DailyPaceData = {
+  sent_today: number;
+  daily_limit: number;
+  percentage: number;
+  safe_remaining: number;
+  warmup_mode: boolean;
+  stagger_delay_seconds: number;
+  live_sending_enabled: boolean;
+  sender_email: string;
+  status: string;
+};
+
 export type TabType =
   | 'overview'
   | 'campaigns'

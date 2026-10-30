@@ -370,4 +370,25 @@ class FollowupDraftRequest(BaseModel):
     tone: str = Field(default="direct, respectful, and brief")
 
 
+# ===================== AGENT ACTIVITY FEED SCHEMAS =====================
+
+class AgentActivityItem(BaseModel):
+    id: str
+    type: str  # discovery, audit, draft, dispatch, reply, suppression
+    title: str
+    description: str
+    timestamp: datetime
+    status: str
+    badge: Optional[str] = None
+    link: Optional[str] = None
+
+
+class AgentActivityFeedResponse(BaseModel):
+    agent_status: str  # active, idle, running
+    interval_minutes: int
+    last_run_at: Optional[datetime] = None
+    activities: list[AgentActivityItem]
+
+
+
 

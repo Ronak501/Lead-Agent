@@ -26,8 +26,9 @@ class EmailDraftProvider:
         tone: str,
         evidence_list: list[dict[str, Any]],
         audit_findings: list[str] | None = None,
+        angle: str = "A",
     ) -> dict[str, Any]:
-        """Creates an evidence-grounded cold email draft."""
+        """Creates an evidence-grounded cold email draft supporting A/B split-testing angles (Angle A: Technical/Speed, Angle B: Conversion/ROI)."""
 
         evidence_urls = [e.get("source_url") for e in evidence_list if e.get("source_url")]
         evidence_excerpts = [e.get("excerpt", "") for e in evidence_list if e.get("excerpt")]
@@ -45,16 +46,23 @@ class EmailDraftProvider:
         sender_title = settings.SENDER_COMPANY or "Founder, Ornitech Solutions"
         sender_website = settings.SENDER_WEBSITE or "https://ornitech.in"
 
+        angle_focus = (
+            "Focus on technical audit observations, page latency, and modern frontend stack improvements (Angle A: Technical Performance)."
+            if angle == "A"
+            else "Focus on mobile user experience friction, conversion rate optimization, and lost visitor retention (Angle B: Conversion & ROI)."
+        )
+
         prompt = f"""You are an expert B2B copywriter for high-converting, human-approved cold emails.
 Follow these STRICT rules:
 1. NEVER invent facts, metrics, fake clients, or imaginary mutual acquaintances.
 2. Ground the opening observation directly in this verified evidence: "{observation}".
-3. Keep the email under 120 words. Direct, respectful, conversational.
-4. Pitch this specific capability: "{service_offer}".
-5. Tone: {tone}.
-6. Include a low-friction question at the end (e.g. "Would you be open to a 10-minute chat or should I send a 2-minute Loom teardown?").
-7. Add an opt-out line: "If this isn't relevant, just let me know and I won't follow up."
-8. Sign off the email with this EXACT sender sign-off at the end:
+3. Pitch Strategy: {angle_focus}
+4. Keep the email under 120 words. Direct, respectful, conversational.
+5. Pitch this specific capability: "{service_offer}".
+6. Tone: {tone}.
+7. Include a low-friction question at the end (e.g. "Would you be open to a 10-minute chat or should I send a 2-minute Loom teardown?").
+8. Add an opt-out line: "If this isn't relevant, just let me know and I won't follow up."
+9. Sign off the email with this EXACT sender sign-off at the end:
 Best regards,
 {sender_name}
 {sender_title}
@@ -127,7 +135,8 @@ Respond ONLY with a JSON object in this exact schema:
                                 "body_text": body_content,
                                 "evidence_urls": evidence_urls,
                                 "confidence": float(parsed.get("confidence", 0.92)),
-                                "model": f"groq/{model_candidate}",
+                                "model": f"groq/{model_candidate} [Angle {angle}]",
+                                "angle": angle,
                             }
                         elif resp.status_code == 429:
                             err_msg = f"Groq API Rate Limit Reached for key 'GROQ_API_KEY' (model {model_candidate}): {resp.text[:150]}"
@@ -201,7 +210,8 @@ Respond ONLY with a JSON object in this exact schema:
             "body_text": body,
             "evidence_urls": evidence_urls,
             "confidence": confidence,
-            "model": "grounded-heuristic-engine",
+            "model": f"grounded-heuristic-engine [Angle {angle}]",
+            "angle": angle,
         }
 
     async def classify_reply_and_suggest(

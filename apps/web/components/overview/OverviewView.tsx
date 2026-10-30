@@ -9,14 +9,29 @@ import {
   Flame,
   Mail,
   MessageSquare,
+  RefreshCw,
   Send,
   ShieldAlert,
   ShieldCheck,
   Sparkles,
   Target,
   Users,
+  Zap,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+
+function formatTimeAgo(dateString?: string | null) {
+  if (!dateString) return 'Just now';
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffSec = Math.floor((now.getTime() - date.getTime()) / 1000);
+  if (diffSec < 60) return `${Math.max(1, diffSec)}s ago`;
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHour = Math.floor(diffMin / 60);
+  if (diffHour < 24) return `${diffHour}h ago`;
+  return `${Math.floor(diffHour / 24)}d ago`;
+}
 
 interface OverviewViewProps {
   onOpenDiscoverModal?: () => void;
@@ -29,6 +44,11 @@ export function OverviewView({ onOpenDiscoverModal, onOpenNewCampaignModal }: Ov
     leads,
     drafts,
     analytics,
+    agentActivities,
+    agentStatus,
+    agentLastRun,
+    dailyPace,
+    fetchAgentActivities,
     loading,
     handleRunAutonomousPipeline,
   } = useApp();
@@ -71,6 +91,51 @@ export function OverviewView({ onOpenDiscoverModal, onOpenNewCampaignModal }: Ov
           </button>
         </div>
       </div>
+
+      {/* DAILY SENDING PACE & WARMUP SAFEGUARD */}
+      {dailyPace && (
+        <div className="rounded-[24px_18px_22px_16px] border border-[#ddd5c3] bg-[#f5eddf] p-4 sm:p-5 shadow-sm space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="p-1.5 rounded-lg bg-[#35422d]/10 text-[#35422d]">
+                <ShieldCheck size={16} />
+              </span>
+              <div>
+                <span className="text-xs font-semibold text-[#29251d]">Daily Warmup &amp; Deliverability Safeguard</span>
+                <span className="text-[11px] text-[#443b2f] ml-2">
+                  Sender: <strong className="text-[#29251d]">{dailyPace.sender_email}</strong> ({dailyPace.warmup_mode ? 'Safe Warmup Pacing' : 'Standard Rate'})
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 text-xs">
+              <span className="font-semibold text-[#29251d]">{dailyPace.sent_today} / {dailyPace.daily_limit} Sent Today</span>
+              <span className="text-[#35422d] bg-[#35422d]/10 px-2.5 py-0.5 rounded-full font-medium">
+                {dailyPace.safe_remaining} Safe Remaining
+              </span>
+            </div>
+          </div>
+
+          <div className="w-full bg-[#eee6d6] rounded-full h-2 overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all duration-500 ${
+                dailyPace.percentage > 90 ? 'bg-[#ad7d62]' : 'bg-[#35422d]'
+              }`}
+              style={{ width: `${dailyPace.percentage}%` }}
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-[#443b2f]">
+            <div className="flex items-center gap-4">
+              <span>🚀 Stagger Interval: <strong>{dailyPace.stagger_delay_seconds}s between dispatches</strong></span>
+              <span>🔒 Status: <strong className="text-[#35422d] capitalize">{dailyPace.status}</strong></span>
+              <span className="hidden md:inline">📅 Calendar Booking Auto-Responder: <strong className="text-[#35422d]">https://cal.com/ornitech/intro</strong></span>
+            </div>
+            <span className="text-[10px] uppercase tracking-wider font-semibold text-[#694737]">
+              Zero Spam Flag Guarantee
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* OVERVIEW KPI HIERARCHY */}
       <div className="space-y-4">
@@ -193,6 +258,117 @@ export function OverviewView({ onOpenDiscoverModal, onOpenNewCampaignModal }: Ov
             );
           })}
         </div>
+      </div>
+
+      {/* 24/7 AUTONOMOUS AGENT LIVE STREAM (EXPLEE-STYLE REAL-TIME PULSE) */}
+      <div className="rounded-[28px_20px_30px_18px] border border-[#ddd5c3] bg-[#f5eddf] p-5 sm:p-6 space-y-4 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#ddd5c3] pb-4">
+          <div className="flex items-center gap-3">
+            <span className="relative flex h-3 w-3 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#35422d] opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-[#35422d]"></span>
+            </span>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="font-serif text-lg font-medium text-[#29251d]">Autonomous Agent Live Stream</h2>
+                <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-[#35422d]/15 text-[#35422d] border border-[#35422d]/30">
+                  {agentStatus.toUpperCase()}
+                </span>
+              </div>
+              <p className="text-xs text-[#443b2f]">
+                Live feed of automated prospect discoveries, website audits, AI pitches, and inbound meeting bookings
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <span className="text-[11px] text-[#443b2f] hidden lg:inline">
+              Cycle runs every 15 min {agentLastRun && `(Last: ${formatTimeAgo(agentLastRun)})`}
+            </span>
+            <button
+              onClick={() => fetchAgentActivities()}
+              className="p-1.5 rounded-[12px] bg-[#eee6d6] hover:bg-[#ddd5c3] text-[#29251d] text-xs font-medium border border-[#ddd5c3] transition-colors"
+              title="Refresh Activity Feed"
+            >
+              <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+            </button>
+            <button
+              onClick={handleRunAutonomousPipeline}
+              disabled={loading}
+              className="px-3 py-1.5 rounded-[14px_10px_12px_10px] bg-[#35422d] hover:bg-[#273320] text-[#f5eddf] text-xs font-semibold shadow-xs transition-colors flex items-center gap-1.5"
+            >
+              <Sparkles size={12} className="text-[#b9b28b]" /> Run Cycle Now
+            </button>
+          </div>
+        </div>
+
+        {agentActivities.length === 0 ? (
+          <div className="p-8 text-center text-xs text-[#443b2f]">
+            Waiting for agent activity. The background worker evaluates active campaigns every 15 minutes.
+          </div>
+        ) : (
+          <div className="space-y-2.5 max-h-[380px] overflow-y-auto pr-1">
+            {agentActivities.slice(0, 10).map((act) => {
+              const isDispatch = act.type === 'dispatch';
+              const isAudit = act.type === 'audit';
+              const isDiscovery = act.type === 'discovery';
+              const isReply = act.type === 'reply';
+              const isSuppression = act.type === 'suppression';
+
+              return (
+                <div
+                  key={act.id}
+                  className="flex items-start justify-between gap-3 p-3 rounded-[16px_12px_14px_10px] bg-[#eee6d6]/60 border border-[#ddd5c3]/80 hover:bg-[#eee6d6] transition-colors"
+                >
+                  <div className="flex items-start gap-3">
+                    <span
+                      className={`p-2 rounded-xl shrink-0 mt-0.5 text-xs ${
+                        isDispatch
+                          ? 'bg-[#35422d]/15 text-[#35422d]'
+                          : isAudit
+                          ? 'bg-[#694737]/15 text-[#694737]'
+                          : isDiscovery
+                          ? 'bg-[#ad7d62]/15 text-[#ad7d62]'
+                          : isReply
+                          ? 'bg-[#35422d] text-[#f5eddf]'
+                          : 'bg-[#443b2f]/15 text-[#443b2f]'
+                      }`}
+                    >
+                      {isDispatch && <Send size={14} />}
+                      {isAudit && <CheckCircle2 size={14} />}
+                      {isDiscovery && <Target size={14} />}
+                      {isReply && <Flame size={14} />}
+                      {isSuppression && <ShieldAlert size={14} />}
+                    </span>
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-xs text-[#29251d]">{act.title}</span>
+                        {act.badge && (
+                          <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-[#f5eddf] border border-[#ddd5c3] text-[#443b2f]">
+                            {act.badge}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-[#443b2f] leading-relaxed">{act.description}</p>
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end gap-1.5 shrink-0">
+                    <span className="text-[10px] text-[#694737] font-medium whitespace-nowrap">
+                      {formatTimeAgo(act.timestamp)}
+                    </span>
+                    {act.link && (
+                      <Link
+                        href={act.link}
+                        className="text-[11px] text-[#35422d] hover:text-[#273320] font-medium inline-flex items-center gap-0.5"
+                      >
+                        View <ArrowUpRight size={11} />
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Live Outreach Funnel in Pale Paper Sheet */}
