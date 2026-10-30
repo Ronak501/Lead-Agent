@@ -76,14 +76,14 @@ Respond ONLY with a JSON object in this exact schema:
         diagnostics = []
         # 1. Primary Strategy: Groq API (Ultra-fast LPU inference with resilient modern model fallback)
         if self.groq_key and self.groq_key != "mock_key":
-            preferred_model = self.groq_model or "llama-3.3-70b-versatile"
+            preferred_model = self.groq_model or "openai/gpt-oss-120b"
             candidate_models = [
                 preferred_model,
-                "llama-3.3-70b-versatile",
-                "llama-3.1-8b-instant",
                 "openai/gpt-oss-120b",
                 "openai/gpt-oss-20b",
                 "qwen/qwen3.8-27b",
+                "llama-3.3-70b-versatile",
+                "llama-3.1-8b-instant",
             ]
             # Deduplicate preserving order
             unique_candidates = []

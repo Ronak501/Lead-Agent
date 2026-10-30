@@ -11,6 +11,10 @@ from .schemas import ApiStatus
 from .seed import seed_database
 from .automation_service import AutomationEngine
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
 logger = logging.getLogger("leadpilot.main")
 
 

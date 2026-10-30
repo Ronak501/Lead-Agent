@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///./leadpilot.db"  # Defaults to SQLite for seamless instant zero-config startup, supports postgresql://
     REDIS_URL: str = "redis://localhost:6379/0"
     GROQ_API_KEY: str = ""
-    GROQ_MODEL: str = "llama-3.1-8b-instant"
+    GROQ_MODEL: str = "openai/gpt-oss-120b"
     GEMINI_API_KEY: str = ""
     APOLLO_API_KEY: str = ""
     HUNTER_API_KEY: str = ""

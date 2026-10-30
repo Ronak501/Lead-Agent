@@ -176,6 +176,8 @@ class CompanyDiscoveryProvider:
                     organizations = org_resp.json().get("organizations", [])
                 elif org_resp.status_code == 429:
                     raise ApiRateLimitException("APOLLO_API_KEY", f"Monthly search credit or rate limit exhausted: {org_resp.text[:200]}")
+                elif org_resp.status_code == 422 and ("CREDITS_EXHAUSTED" in org_resp.text or "insufficient credits" in org_resp.text.lower()):
+                    raise ApiRateLimitException("APOLLO_API_KEY", "Monthly search credit limit exhausted: Your Apollo team has used all of its lead credits for this billing cycle.")
                 elif org_resp.status_code in (401, 403):
                     raise ApiAuthenticationException("APOLLO_API_KEY", f"Invalid key or unauthorized: {org_resp.text[:200]}")
 
@@ -197,6 +199,8 @@ class CompanyDiscoveryProvider:
                         organizations = tags_resp.json().get("organizations", [])
                     elif tags_resp.status_code == 429:
                         raise ApiRateLimitException("APOLLO_API_KEY", f"Monthly search credit or rate limit exhausted: {tags_resp.text[:200]}")
+                    elif tags_resp.status_code == 422 and ("CREDITS_EXHAUSTED" in tags_resp.text or "insufficient credits" in tags_resp.text.lower()):
+                        raise ApiRateLimitException("APOLLO_API_KEY", "Monthly search credit limit exhausted: Your Apollo team has used all of its lead credits for this billing cycle.")
 
                 # If still 0 results and locations were restrictive, try with country only
                 if not organizations and len(locations) > 1:

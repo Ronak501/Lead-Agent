@@ -1664,6 +1664,8 @@ async def test_integration(provider_name: str):
                     return {"status": "ok", "provider": "apollo", "detail": "Apollo.io API connected and authenticated successfully."}
                 elif res.status_code == 429:
                     raise HTTPException(status_code=429, detail=f"API Rate Limit or Quota Reached for key 'APOLLO_API_KEY': {res.text}")
+                elif res.status_code == 422 and ("CREDITS_EXHAUSTED" in res.text or "insufficient credits" in res.text.lower()):
+                    raise HTTPException(status_code=429, detail="API Rate Limit or Quota Reached for key 'APOLLO_API_KEY': Your Apollo team lead credits are exhausted for this billing cycle. Please upgrade your plan or replace with a funded key.")
                 elif res.status_code in (401, 403):
                     raise HTTPException(status_code=400, detail=f"Authentication Failed for key 'APOLLO_API_KEY': Invalid or restricted Apollo API key (HTTP {res.status_code}): {res.text}")
                 else:
