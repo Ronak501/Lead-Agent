@@ -90,16 +90,43 @@ class SafeEmailSender:
         # If live sending is enabled, check SMTP credentials first
         if settings.SMTP_USER and settings.SMTP_PASS:
             try:
-                msg = MIMEMultipart()
+                msg = MIMEMultipart("alternative")
                 msg["Subject"] = subject
                 sender_addr = settings.SENDER_EMAIL or settings.SMTP_USER
                 sender_name = settings.SENDER_NAME or "Ornitech Solutions"
                 msg["From"] = f"{sender_name} <{sender_addr}>"
                 msg["To"] = to_email
-                msg.attach(MIMEText(body_text, "plain"))
+
+                # Modern deliverability headers
+                unsub_url = f"http://localhost:8000/api/tracking/unsubscribe?email={to_email}"
+                track_url = f"http://localhost:8000/api/tracking/open/{draft_id}.png"
+                msg["List-Unsubscribe"] = f"<{unsub_url}>"
+                msg["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
+
+                # 1. Plain text version
+                plain_body = f"{body_text}\n\n---\nTo unsubscribe from future emails: {unsub_url}"
+                msg.attach(MIMEText(plain_body, "plain"))
+
+                # 2. Rich HTML version with open pixel and compliant opt-out footer
+                formatted_paragraphs = "".join(f"<p style='margin: 0 0 14px 0;'>{p.strip()}</p>" for p in body_text.split("\n\n") if p.strip())
+                html_body = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #29251d; margin: 0; padding: 16px;">
+  <div style="max-width: 600px;">
+    {formatted_paragraphs}
+    <div style="margin-top: 24px; padding-top: 12px; border-top: 1px solid #e2e8f0; font-size: 11px; color: #64748b;">
+      <p style="margin: 0;">Sent by {sender_name} &bull; <a href="{unsub_url}" style="color: #64748b; text-decoration: underline;">Unsubscribe</a></p>
+    </div>
+    <img src="{track_url}" width="1" height="1" alt="" style="display:none;" />
+  </div>
+</body>
+</html>"""
+                msg.attach(MIMEText(html_body, "html"))
 
                 with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15) as server:
-                    server.starttls()
+                    if settings.SMTP_USE_TLS:
+                        server.starttls()
                     clean_smtp_pass = settings.SMTP_PASS.strip().replace(" ", "")
                     server.login(settings.SMTP_USER, clean_smtp_pass)
                     server.send_message(msg)

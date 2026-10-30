@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     IMAP_PASS: str = ""
     AUTOPILOT_AUTO_RUN: bool = True
     AUTOPILOT_INTERVAL_MINUTES: int = 15
+    DAILY_SEND_LIMIT: int = 100
+    OUTREACH_STAGGER_DELAY_SECONDS: float = 2.0
 
 
 settings = Settings()

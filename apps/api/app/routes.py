@@ -8,6 +8,10 @@ import imaplib
 from typing import Optional
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status, BackgroundTasks
+from fastapi.responses import HTMLResponse
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
@@ -1711,6 +1715,226 @@ async def test_integration(provider_name: str):
         return {"status": "ok", "provider": "gmail", "detail": "Google OAuth credentials configured and ready for authorization."}
 
     raise HTTPException(status_code=404, detail=f"Unknown provider '{provider_name}'.")
+
+
+class TestSendRequest(BaseModel):
+    recipient_email: str
+
+
+@router.post("/integrations/smtp/test-send", response_model=dict)
+def send_test_email(payload: TestSendRequest):
+    """Sends a live verification test email to the specified address to verify real inbox delivery."""
+    recipient = payload.recipient_email.strip()
+    if not recipient or "@" not in recipient:
+        raise HTTPException(status_code=400, detail="Please provide a valid recipient email address.")
+
+    if not (settings.SMTP_USER and settings.SMTP_PASS):
+        raise HTTPException(status_code=400, detail="SMTP is not configured in .env (missing SMTP_USER or SMTP_PASS).")
+
+    try:
+        clean_pass = settings.SMTP_PASS.strip().replace(" ", "")
+        sender_email = settings.SENDER_EMAIL or settings.SMTP_USER
+        sender_name = settings.SENDER_NAME or "Ornitech Solutions"
+
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = "🧪 LeadPilot AI: Live Outbound Verification Test"
+        msg["From"] = f"{sender_name} <{sender_email}>"
+        msg["To"] = recipient
+
+        now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        text_content = f"""Hello,
+
+This is a live test email sent from LeadPilot AI to verify that your outbound SMTP mail pipeline is 100% operational.
+
+Configuration Details:
+- SMTP Host: {settings.SMTP_HOST}:{settings.SMTP_PORT}
+- Authenticated Account: {settings.SMTP_USER}
+- Sender Identity: {sender_name} <{sender_email}>
+- Sent At: {now_str}
+
+If you received this message in your inbox, your outbound email pipeline is ready for automated prospecting and cold outreach!
+
+Best regards,
+Ornitech Solutions Engineering
+https://ornitech.in
+"""
+        html_content = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f5eddf; padding: 32px 16px; margin: 0;">
+  <div style="max-width: 540px; margin: 0 auto; background: #ffffff; border-radius: 20px; border: 1px solid #ddd5c3; padding: 28px; box-shadow: 0 4px 12px rgba(41,37,29,0.05);">
+    <div style="border-bottom: 1px solid #eee6d6; padding-bottom: 16px; margin-bottom: 20px;">
+      <h2 style="font-family: Georgia, serif; font-size: 22px; color: #29251d; margin: 0; font-weight: normal;">LeadPilot AI Verification</h2>
+      <p style="font-size: 12px; color: #694737; margin: 4px 0 0 0;">Outbound SMTP Mailer Diagnostic</p>
+    </div>
+    <div style="background-color: #35422d15; border: 1px solid #35422d30; border-radius: 12px; padding: 12px 16px; margin-bottom: 20px;">
+      <span style="font-size: 13px; font-weight: 600; color: #35422d;">✓ Outbound SMTP Mail Pipeline is 100% Operational</span>
+    </div>
+    <p style="font-size: 14px; color: #443b2f; line-height: 1.6; margin: 0 0 16px 0;">
+      Hello! This message confirms that your Gmail / Google Workspace SMTP credentials are authenticated properly with TLS encryption.
+    </p>
+    <div style="background: #eee6d660; border: 1px solid #ddd5c3; border-radius: 12px; padding: 14px; font-size: 12px; color: #29251d; margin-bottom: 20px;">
+      <div style="margin-bottom: 6px;"><strong>Sender Account:</strong> {settings.SMTP_USER}</div>
+      <div style="margin-bottom: 6px;"><strong>Host &amp; Port:</strong> {settings.SMTP_HOST}:{settings.SMTP_PORT}</div>
+      <div style="margin-bottom: 6px;"><strong>Sender Identity:</strong> {sender_name}</div>
+      <div><strong>Dispatched At:</strong> {now_str}</div>
+    </div>
+    <p style="font-size: 12px; color: #694737; margin: 0; border-top: 1px solid #eee6d6; padding-top: 16px;">
+      Sent automatically by Ornitech Solutions (founder@ornitech.in) · <a href="https://ornitech.in" style="color: #35422d; text-decoration: none;">ornitech.in</a>
+    </p>
+  </div>
+</body>
+</html>"""
+        msg.attach(MIMEText(text_content, "plain"))
+        msg.attach(MIMEText(html_content, "html"))
+
+        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=12) as server:
+            if settings.SMTP_USE_TLS:
+                server.starttls()
+            server.login(settings.SMTP_USER, clean_pass)
+            server.send_message(msg)
+
+        return {
+            "status": "ok",
+            "message": f"Test email successfully sent to '{recipient}' via {settings.SMTP_USER}.",
+            "recipient": recipient,
+            "timestamp": now_str,
+        }
+    except smtplib.SMTPAuthenticationError as auth_err:
+        raise HTTPException(
+            status_code=400,
+            detail=f"SMTP Authentication Error: {str(auth_err)}. If using Gmail, make sure you generated a 16-character Google App Password."
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to send test email: {str(e)}")
+
+
+# 1x1 transparent tracking pixel PNG
+TRACKING_PIXEL_PNG = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+    b"\x08\x06\x00\x00\x00\x1f\x15c4\x00\x00\x00\nIDATx\x9cc\x00\x01\x00"
+    b"\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+
+
+@router.get("/tracking/open/{draft_id}.png")
+def track_email_open(draft_id: str, db: Session = Depends(get_db)):
+    """Logs an email open event when the prospect opens the email."""
+    draft = db.query(EmailDraft).filter_by(id=draft_id).first()
+    if draft:
+        existing = db.query(EmailEvent).filter_by(draft_id=draft.id, event_type="opened").first()
+        if not existing:
+            event = EmailEvent(
+                draft_id=draft.id,
+                event_type="opened",
+                occurred_at=datetime.now(timezone.utc),
+                provider="pixel_tracker",
+                details=json.dumps({"source": "html_open_pixel"}),
+            )
+            db.add(event)
+            db.commit()
+
+    return Response(
+        content=TRACKING_PIXEL_PNG,
+        media_type="image/png",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
+
+
+@router.get("/tracking/unsubscribe", response_class=HTMLResponse)
+def handle_unsubscribe(email: str = Query(...), db: Session = Depends(get_db)):
+    """Unsubscribes recipient and immediately records workspace suppression."""
+    norm_email = normalize_email(email)
+    ws_id = get_current_workspace_id()
+
+    if norm_email:
+        existing = db.query(Suppression).filter_by(workspace_id=ws_id, email_normalized=norm_email).first()
+        if not existing:
+            domain_part = norm_email.split("@")[1] if "@" in norm_email else None
+            supp = Suppression(
+                workspace_id=ws_id,
+                email_normalized=norm_email,
+                domain_normalized=domain_part,
+                reason="manual_opt_out",
+                source="unsubscribe_link",
+            )
+            db.add(supp)
+            db.commit()
+
+    return HTMLResponse(
+        content=f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Unsubscribe Confirmed</title>
+  <style>
+    body {{
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background-color: #f5eddf;
+      color: #29251d;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 20px;
+    }}
+    .card {{
+      background: #ffffff;
+      border: 1px solid #ddd5c3;
+      border-radius: 24px;
+      padding: 36px 32px;
+      max-width: 460px;
+      text-align: center;
+      box-shadow: 0 4px 16px rgba(41,37,29,0.06);
+    }}
+    h1 {{
+      font-family: Georgia, serif;
+      font-size: 24px;
+      margin: 0 0 12px 0;
+      color: #29251d;
+      font-weight: normal;
+    }}
+    p {{
+      font-size: 13px;
+      color: #443b2f;
+      line-height: 1.6;
+      margin: 0 0 20px 0;
+    }}
+    .badge {{
+      display: inline-block;
+      background: #35422d15;
+      color: #35422d;
+      border: 1px solid #35422d30;
+      border-radius: 9999px;
+      padding: 4px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }}
+    .footer {{
+      font-size: 11px;
+      color: #694737;
+      border-top: 1px solid #eee6d6;
+      padding-top: 16px;
+      margin-top: 16px;
+    }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="badge">Unsubscribed</div>
+    <h1>You have been opted out</h1>
+    <p>Your email (<strong>{norm_email}</strong>) has been added to our suppression blocklist. You will not receive any further automated outreach from Ornitech Solutions.</p>
+    <div class="footer">Ornitech Solutions (founder@ornitech.in)</div>
+  </div>
+</body>
+</html>"""
+    )
 
 
 

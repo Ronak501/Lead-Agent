@@ -406,6 +406,18 @@ class AutomationEngine:
             db.commit()
             return False, msg
 
+        # Deliverability & Warm-up Safeguard: Enforce daily sending limit
+        if settings.EMAIL_SENDING_ENABLED and settings.DAILY_SEND_LIMIT > 0:
+            today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+            today_sent_count = db.query(EmailDraft).filter(
+                EmailDraft.sent_at >= today_start,
+                EmailDraft.status.in_(["sent", "replied"])
+            ).count()
+            if today_sent_count >= settings.DAILY_SEND_LIMIT:
+                msg = f"Deliverability Protection: Daily sending quota reached ({today_sent_count}/{settings.DAILY_SEND_LIMIT} emails today). Pausing live dispatches to prevent domain flagging."
+                logger.warning(f"⚠️ {msg}")
+                return False, msg
+
         # 1. Audit website if not audited yet
         latest_audit = db.query(WebsiteAudit).filter_by(company_id=company.id).first()
         if not latest_audit:
@@ -695,6 +707,9 @@ class AutomationEngine:
             success, reason = await cls.dispatch_single_lead(lead, db, service_offer=service_offer)
             if success:
                 dispatched_count += 1
+                # Deliverability safeguard: Stagger live sends
+                if settings.EMAIL_SENDING_ENABLED and settings.OUTREACH_STAGGER_DELAY_SECONDS > 0:
+                    await asyncio.sleep(settings.OUTREACH_STAGGER_DELAY_SECONDS)
             else:
                 dispatch_failures.append({
                     "company_name": lead.company.name if lead.company else "Unknown",

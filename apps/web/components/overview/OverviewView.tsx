@@ -92,6 +92,37 @@ export function OverviewView({ onOpenDiscoverModal, onOpenNewCampaignModal }: Ov
         </div>
       </div>
 
+      {/* AUTOPILOT ENGINE LIVE STATUS BANNER */}
+      <div className="rounded-[24px_18px_22px_16px] border border-[#ddd5c3] bg-[#eee6d6]/80 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-3">
+          <span className="relative flex h-3 w-3 shrink-0">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#35422d] opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-3 w-3 bg-[#35422d]"></span>
+          </span>
+          <div>
+            <span className="font-semibold text-[#29251d]">Autonomous Prospecting Engine: Active</span>
+            <span className="text-[#443b2f] ml-2 hidden md:inline">
+              Running every 15 mins &bull; Live SMTP: <strong className="text-[#29251d]">founder@ornitech.in</strong> &bull; Anti-Spam De-duplication Active
+            </span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Link
+            href="/integrations"
+            className="px-3 py-1.5 rounded-[14px_10px_12px_10px] bg-[#f5eddf] hover:bg-[#ddd5c3] text-[#29251d] text-xs font-medium border border-[#ddd5c3] transition-colors"
+          >
+            Integrations
+          </Link>
+          <button
+            onClick={handleRunAutonomousPipeline}
+            disabled={loading}
+            className="px-3.5 py-1.5 rounded-[14px_10px_12px_10px] bg-[#35422d] hover:bg-[#273320] text-[#f5eddf] text-xs font-semibold shadow-xs transition-colors flex items-center gap-1.5"
+          >
+            <Sparkles size={12} className="text-[#b9b28b]" /> Run Cycle Now
+          </button>
+        </div>
+      </div>
+
       {/* OVERVIEW KPI HIERARCHY */}
       <div className="space-y-4">
         {/* TIER 1: HIGH-PRIORITY OPERATIONAL ACTION CARDS */}
