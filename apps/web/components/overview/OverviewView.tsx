@@ -15,7 +15,6 @@ import {
   Sparkles,
   Target,
   Users,
-  Zap,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
@@ -32,10 +31,8 @@ export function OverviewView({ onOpenDiscoverModal, onOpenNewCampaignModal }: Ov
     analytics,
     loading,
     handleRunAutonomousPipeline,
-    handleBatchAutoDispatch,
   } = useApp();
 
-  const unsentCount = leads.filter((l) => l.status !== 'sent' && l.status !== 'replied').length;
   const pendingReviewCount = drafts.filter((d) => d.status === 'pending_review').length;
   const approvedCount = drafts.filter((d) => d.status === 'approved').length;
   const verifiedContactsCount = leads.filter((l) => l.email_status === 'verified').length;
@@ -43,55 +40,7 @@ export function OverviewView({ onOpenDiscoverModal, onOpenNewCampaignModal }: Ov
   const repliedCount = drafts.filter((d) => d.status === 'replied' || (d.reply_count && d.reply_count > 0)).length;
 
   return (
-    <div className="space-y-8 font-sans text-[#29251d]">
-      {/* Generous Split Opening (Organic Opening) */}
-      <div className="rounded-[32px_22px_36px_18px] border border-[#ddd5c3] bg-[#f5eddf] p-6 sm:p-8 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-sm relative overflow-hidden">
-        {/* Subtle decorative terracotta and moss organic shapes in background */}
-        <div className="absolute -top-12 -right-12 w-48 h-48 rounded-[40px_60px_35px_55px] bg-[#ad7d62]/10 pointer-events-none transform rotate-12" />
-        <div className="absolute -bottom-16 right-40 w-44 h-44 rounded-[55px_35px_60px_40px] bg-[#35422d]/8 pointer-events-none transform -rotate-6" />
-
-        <div className="space-y-3 max-w-2xl relative z-10">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#35422d]/10 border border-[#35422d]/25 text-[#35422d] text-xs font-semibold">
-            <Sparkles size={13} className="text-[#35422d]" /> 100% Autonomous B2B Cold Outreach
-          </div>
-          <h1 className="font-serif text-2xl sm:text-3xl md:text-4xl font-normal tracking-tight text-[#29251d] leading-tight">
-            Find Prospects. Audit Sites. Dispatch Cold Emails Automatically.
-          </h1>
-          <p className="text-sm text-[#443b2f] leading-relaxed max-w-xl">
-            LeadPilot AI automatically discovers qualified prospects, audits their live domains for tech gaps, composes evidence-grounded pitches, and dispatches emails directly. You only check in when high-value replies arrive!
-          </p>
-        </div>
-
-        <div className="flex flex-col sm:flex-row md:flex-col gap-2.5 shrink-0 relative z-10">
-          <button
-            onClick={handleRunAutonomousPipeline}
-            disabled={loading}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-[27px_19px_29px_16px] bg-[#35422d] hover:bg-[#273320] text-[#f5eddf] text-xs font-semibold shadow-sm transition-all disabled:opacity-50 active:scale-[0.98]"
-          >
-            <Sparkles size={14} className="fill-[#b9b28b] text-[#b9b28b]" /> Run Autonomous Engine (Discover ➔ Send ➔ Alert)
-          </button>
-          <button
-            onClick={handleBatchAutoDispatch}
-            disabled={loading || unsentCount === 0}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-[22px_26px_19px_29px] bg-[#694737] hover:bg-[#53372a] text-[#f5eddf] text-xs font-semibold shadow-sm transition-all disabled:opacity-50 active:scale-[0.98]"
-          >
-            <Zap size={14} className="fill-[#ad7d62] text-[#ad7d62]" /> Run Company Auto-Pilot ({unsentCount})
-          </button>
-          <Link
-            href="/review"
-            className="flex items-center justify-center gap-2 px-4 py-2 rounded-[24px_18px_26px_16px] border border-[#35422d]/40 bg-[#eee6d6] hover:bg-[#ddd5c3] text-[#29251d] text-xs font-semibold transition-all text-center"
-          >
-            <ShieldCheck size={16} className="text-[#35422d]" /> Review Pending Drafts ({pendingReviewCount})
-          </Link>
-          <Link
-            href="/leads"
-            className="flex items-center justify-center gap-2 px-4 py-2 rounded-[20px_16px_22px_14px] border border-[#ddd5c3] bg-transparent hover:bg-[#ddd5c3]/50 text-[#443b2f] text-xs font-medium transition-all text-center"
-          >
-            View Discovered Leads <ArrowRight size={14} />
-          </Link>
-        </div>
-      </div>
-
+    <div className="space-y-6 font-sans text-[#29251d]">
       {/* AUTOPILOT ENGINE LIVE STATUS BANNER */}
       <div className="rounded-[24px_18px_22px_16px] border border-[#ddd5c3] bg-[#eee6d6]/80 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
         <div className="flex items-center gap-3">
