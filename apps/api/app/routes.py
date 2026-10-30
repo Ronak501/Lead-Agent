@@ -38,6 +38,8 @@ from .models import (
     normalize_email,
 )
 from .schemas import (
+    DomainProfileRequest,
+    DomainProfileResponse,
     CampaignCreate,
     CampaignOut,
     LeadImport,
@@ -149,6 +151,126 @@ def list_campaigns(db: Session = Depends(get_db)):
             )
         )
     return out
+
+
+@router.post("/campaigns/auto-profile", response_model=DomainProfileResponse)
+async def auto_profile_domain(payload: DomainProfileRequest):
+    """
+    Explee-style 1-Click Reverse Domain Profiler:
+    Takes any company website (e.g. ornitech.in or customer's domain), crawls and analyzes it,
+    then uses Groq LPU (openai/gpt-oss-120b) to automatically formulate:
+    - Business Niche & Core Offerings
+    - Value Proposition
+    - Ideal Customer Profile (target industries, titles, regions)
+    - Ready-to-launch Campaign configuration
+    """
+    url = payload.domain.strip()
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+
+    # 1. Audit website to extract factual metadata & offerings
+    audit_data = await audit_provider.audit(url)
+    if audit_data.get("status_code", 0) in (403, 408, 502):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not reach or profile domain '{payload.domain}': {audit_data.get('meta_description')}"
+        )
+
+    # 2. Use Groq AI to synthesize ICP and campaign strategy
+    if not settings.GROQ_API_KEY:
+        raise HTTPException(
+            status_code=400,
+            detail="Missing required configuration: 'GROQ_API_KEY' is not set in .env."
+        )
+
+    prompt = f"""You are an elite B2B growth strategist. Analyze this company's website audit data and formulate their Ideal Customer Profile (ICP) for outbound client acquisition.
+
+Website URL: {url}
+Page Title: {audit_data.get('title')}
+Meta Description: {audit_data.get('meta_description')}
+Tech Stack: {', '.join(audit_data.get('tech_stack', []))}
+Identified Offerings/Observations: {audit_data.get('opportunity_summary')}
+
+Respond ONLY with a valid JSON object matching this schema:
+{{
+  "company_name": "Name of the business",
+  "company_type": "Specific niche (e.g., Next.js & AI Web Engineering Agency)",
+  "value_proposition": "1-sentence compelling offer",
+  "services": ["Service 1", "Service 2", "Service 3"],
+  "target_industries": ["Industry 1", "Industry 2", "Industry 3"],
+  "target_titles": ["CEO", "Founder", "Head of Growth", "CTO"],
+  "target_geography": "Primary region (e.g. India & Global)",
+  "target_city": "Top hub city (e.g. Bangalore)",
+  "target_country": "Primary country (e.g. India)",
+  "cold_email_hook": "Specific angle to catch prospect attention"
+}}
+"""
+    headers = {"Authorization": f"Bearer {settings.GROQ_API_KEY}", "Content-Type": "application/json"}
+    candidate_models = ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b"]
+    profile = None
+    last_err = None
+
+    try:
+        async with httpx.AsyncClient(timeout=14.0) as client:
+            for model_candidate in candidate_models:
+                body = {
+                    "model": model_candidate,
+                    "messages": [
+                        {"role": "system", "content": "You are a professional B2B marketing strategist. Respond exclusively in valid JSON."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "response_format": {"type": "json_object"},
+                    "temperature": 0.2,
+                    "max_tokens": 600,
+                }
+                resp = await client.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=body)
+                if resp.status_code == 200:
+                    raw = resp.json()["choices"][0]["message"]["content"]
+                    profile = json.loads(raw)
+                    break
+                else:
+                    last_err = f"HTTP {resp.status_code}: {resp.text[:150]}"
+
+        if not profile:
+            raise HTTPException(status_code=502, detail=f"Groq AI profiling error across models: {last_err}")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"AI domain profiling failed: {str(exc)}")
+
+    company_name = profile.get("company_name", "My Company")
+    company_type = profile.get("company_type", "Technology Agency")
+    target_country = profile.get("target_country", "India")
+    target_city = profile.get("target_city", "Bangalore")
+    services = profile.get("services", ["Web engineering", "Product scaling"])
+    industries = profile.get("target_industries", ["Startups", "SaaS"])
+
+    suggested_campaign = CampaignCreate(
+        name=f"{company_name} — Automated 24/7 Outreach",
+        target_country=target_country,
+        target_city=target_city,
+        company_type=company_type,
+        max_lead_count=50,
+        qualification_criteria=f"Verified decision makers matching {company_name}'s ICP",
+        target_markets=[target_country, "Global"],
+        industries=industries,
+        locations=[target_city, "Remote"],
+        company_sizes=["1-10", "11-50"],
+        services=services,
+        notes=f"Auto-generated from {url}. Hook: {profile.get('cold_email_hook', '')}",
+    )
+
+    return DomainProfileResponse(
+        company_name=company_name,
+        company_type=company_type,
+        value_proposition=profile.get("value_proposition", ""),
+        services=services,
+        target_industries=industries,
+        target_titles=profile.get("target_titles", ["CEO", "Founder"]),
+        target_geography=profile.get("target_geography", target_country),
+        cold_email_hook=profile.get("cold_email_hook", ""),
+        suggested_campaign=suggested_campaign,
+    )
 
 
 @router.post("/campaigns", response_model=CampaignOut, status_code=status.HTTP_201_CREATED)

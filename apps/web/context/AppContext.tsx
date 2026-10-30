@@ -46,6 +46,7 @@ interface AppContextType {
   handleExportCSV: () => void;
   handleCreateCampaign: (formData: any) => Promise<boolean>;
   handleDiscoverLeads: (formData: any) => Promise<boolean>;
+  handleAutoProfileDomain: (domain: string) => Promise<any>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -479,6 +480,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const handleAutoProfileDomain = async (domain: string): Promise<any> => {
+    try {
+      setLoading(true);
+      notify(`🤖 Analyzing ${domain} with AI to formulate your Ideal Customer Profile...`, 'info');
+      const res = await fetch(`${API}/api/campaigns/auto-profile`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Domain profiling failed');
+      }
+      const data = await res.json();
+      notify(`✨ Analyzed ${data.company_name}! Ready to launch 24/7 campaign.`, 'success');
+      return data;
+    } catch (err: any) {
+      notify(err.message, 'error');
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -514,6 +539,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         handleExportCSV,
         handleCreateCampaign,
         handleDiscoverLeads,
+        handleAutoProfileDomain,
       }}
     >
       {children}

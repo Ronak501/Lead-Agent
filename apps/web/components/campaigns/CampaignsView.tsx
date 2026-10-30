@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { ArrowRight, Plus, Target } from 'lucide-react';
+import { ArrowRight, Plus, Target, Sparkles, Loader2, Globe, CheckCircle2 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { NewCampaignModal } from './NewCampaignModal';
 import { DiscoverLeadsModal } from '../leads/DiscoverLeadsModal';
@@ -19,10 +19,26 @@ export function CampaignsView({
   showDiscoverModal: externalShowDiscoverModal,
   setShowDiscoverModal: externalSetShowDiscoverModal,
 }: CampaignsViewProps) {
-  const { campaigns } = useApp();
+  const { campaigns, handleAutoProfileDomain, handleCreateCampaign } = useApp();
   const [internalShowNewCampaignModal, setInternalShowNewCampaignModal] = useState(false);
   const [internalShowDiscoverModal, setInternalShowDiscoverModal] = useState(false);
   const [discoverQuery, setDiscoverQuery] = useState('');
+  const [domainInput, setDomainInput] = useState('');
+  const [isProfiling, setIsProfiling] = useState(false);
+
+  const handleQuickProfileAndLaunch = async () => {
+    if (!domainInput.trim()) return;
+    setIsProfiling(true);
+    try {
+      const profile = await handleAutoProfileDomain(domainInput.trim());
+      if (profile && profile.suggested_campaign) {
+        await handleCreateCampaign(profile.suggested_campaign);
+        setDomainInput('');
+      }
+    } finally {
+      setIsProfiling(false);
+    }
+  };
 
   const isNewCampaignOpen = externalShowNewCampaignModal !== undefined
     ? externalShowNewCampaignModal
@@ -51,6 +67,54 @@ export function CampaignsView({
         >
           <Plus size={16} /> New Campaign
         </button>
+      </div>
+
+      {/* Explee-style 1-Click Reverse Domain Profiler & Instant Launch */}
+      <div className="rounded-[26px_18px_24px_20px] border border-[#ddd5c3] bg-gradient-to-br from-[#f5eddf] to-[#eee4d0] p-5 shadow-xs space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-[#35422d] font-semibold text-xs tracking-wider uppercase">
+            <Sparkles size={14} className="text-[#ad7d62]" /> 1-Click AI Domain Profiler
+          </div>
+          <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-[#35422d]/10 text-[#35422d]">
+            Autonomous Agent
+          </span>
+        </div>
+        <div className="space-y-1">
+          <h2 className="font-serif text-base text-[#29251d] font-normal">
+            Auto-generate your 24/7 client acquisition campaign
+          </h2>
+          <p className="text-xs text-[#5c5040]">
+            Paste your company website (e.g. <span className="font-mono text-[#35422d] font-medium">ornitech.in</span>). Our AI analyzes your offerings, formulates your Ideal Customer Profile, and initiates autonomous prospecting in seconds.
+          </p>
+        </div>
+        <div className="flex flex-col sm:flex-row items-center gap-2 pt-1">
+          <div className="relative flex-1 w-full">
+            <Globe size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#8c7e6c]" />
+            <input
+              type="text"
+              placeholder="Paste your website, e.g. ornitech.in"
+              value={domainInput}
+              onChange={(e) => setDomainInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleQuickProfileAndLaunch()}
+              className="w-full bg-[#fcfaf7] border border-[#ddd5c3] rounded-[18px] pl-9 pr-3.5 py-2 text-xs text-[#29251d] placeholder:text-[#8c7e6c] focus:outline-none focus:border-[#35422d]"
+            />
+          </div>
+          <button
+            onClick={handleQuickProfileAndLaunch}
+            disabled={isProfiling || !domainInput.trim()}
+            className="w-full sm:w-auto px-4 py-2 rounded-[20px] bg-[#35422d] hover:bg-[#273320] disabled:opacity-50 text-[#f5eddf] text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer whitespace-nowrap active:scale-[0.98]"
+          >
+            {isProfiling ? (
+              <>
+                <Loader2 size={13} className="animate-spin" /> Analyzing Offerings...
+              </>
+            ) : (
+              <>
+                <Sparkles size={13} /> Analyze & Launch Campaign
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">

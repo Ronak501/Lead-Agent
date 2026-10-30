@@ -10,6 +10,22 @@ def now_utc() -> datetime:
 
 # ===================== CAMPAIGN SCHEMAS =====================
 
+class DomainProfileRequest(BaseModel):
+    domain: str = Field(min_length=3, max_length=255, description="Website URL or domain, e.g. ornitech.in")
+
+
+class DomainProfileResponse(BaseModel):
+    company_name: str
+    company_type: str
+    value_proposition: str
+    services: list[str]
+    target_industries: list[str]
+    target_titles: list[str]
+    target_geography: str
+    cold_email_hook: str
+    suggested_campaign: "CampaignCreate"
+
+
 class CampaignCreate(BaseModel):
     name: str = Field(min_length=2, max_length=150)
     target_country: str = Field(default="India", max_length=100)
