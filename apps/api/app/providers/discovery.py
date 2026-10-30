@@ -90,103 +90,159 @@ class CompanyDiscoveryProvider:
         service_target: str,
         limit: int,
     ) -> list[dict[str, Any]]:
-        """Queries Apollo Mixed People & Organizations API."""
+        """Queries Apollo API with header authentication (X-Api-Key) and Hunter.io enrichment."""
+        headers = {
+            "X-Api-Key": self.apollo_key,
+            "Content-Type": "application/json",
+            "Cache-Control": "no-cache",
+        }
+
+        # 1. Try mixed_people/search first (supported on paid Apollo plans)
         try:
             async with httpx.AsyncClient(timeout=12.0) as client:
                 resp = await client.post(
                     "https://api.apollo.io/v1/mixed_people/search",
+                    headers=headers,
                     json={
-                        "api_key": self.apollo_key,
-                        "q_organization_keyword_tags": [query, industry],
-                        "person_locations": [market] if market != "Global" else [],
+                        "q_organization_keyword_tags": [query, industry] if query else [industry],
+                        "person_locations": [market] if market and market != "Global" else [],
                         "page": 1,
                         "per_page": limit,
                     },
                 )
                 if resp.status_code == 200:
                     data = resp.json()
-                    results = []
                     people = data.get("people", [])
                     organizations = data.get("organizations", [])
-
-                    # Map orgs by id
                     org_map = {o.get("id"): o for o in organizations if o.get("id")}
-
-                    if people:
-                        for p in people[:limit]:
-                            org_id = p.get("organization_id")
-                            org = org_map.get(org_id, {})
-                            raw_domain = org.get("primary_domain") or p.get("organization", {}).get("primary_domain")
-                            norm_dom = normalize_domain(raw_domain)
-                            if not norm_dom:
-                                continue
-
-                            first_name = p.get("first_name", "")
-                            last_name = p.get("last_name", "")
-                            contact_name = f"{first_name} {last_name}".strip() or None
-                            title = p.get("title") or "Decision Maker"
-                            raw_email = p.get("email")
-
-                            results.append({
-                                "company_name": org.get("name") or p.get("organization_name") or norm_dom.split(".")[0].title(),
-                                "domain": norm_dom,
-                                "website_url": f"https://{norm_dom}",
-                                "country": market,
-                                "industry": org.get("industry") or industry,
-                                "contact_name": contact_name,
-                                "contact_title": title,
-                                "business_email": raw_email.lower().strip() if raw_email else None,
-                                "email_status": "verified" if (raw_email and p.get("email_status") == "verified") else "unknown",
-                                "source_provider": "apollo_api",
-                                "source_url": f"https://{norm_dom}",
-                                "opportunity_type": service_target.lower().replace(" ", "_"),
-                                "evidence_excerpt": f"Verified organizational profile for {org.get('name', norm_dom)} in {industry} ({market}).",
-                                "fit_score": 85,
-                            })
-                        if results:
-                            return results
-
-                    # If people array was empty, use organizations array
-                    for org in organizations[:limit]:
-                        raw_domain = org.get("primary_domain")
+                    results = []
+                    for p in people[:limit]:
+                        org = org_map.get(p.get("organization_id"), {})
+                        raw_domain = org.get("primary_domain") or p.get("organization", {}).get("primary_domain")
                         norm_dom = normalize_domain(raw_domain)
                         if not norm_dom:
                             continue
-
+                        first_name = p.get("first_name", "")
+                        last_name = p.get("last_name", "")
+                        contact_name = f"{first_name} {last_name}".strip() or None
+                        title = p.get("title") or "Decision Maker"
+                        raw_email = p.get("email")
                         results.append({
-                            "company_name": org.get("name") or norm_dom.split(".")[0].title(),
+                            "company_name": org.get("name") or p.get("organization_name") or norm_dom.split(".")[0].title(),
                             "domain": norm_dom,
                             "website_url": f"https://{norm_dom}",
                             "country": market,
                             "industry": org.get("industry") or industry,
-                            "contact_name": None,
-                            "contact_title": "Founder / Product Lead",
-                            "business_email": None,
-                            "email_status": "unknown",
+                            "contact_name": contact_name,
+                            "contact_title": title,
+                            "business_email": raw_email.lower().strip() if raw_email else None,
+                            "email_status": "verified" if (raw_email and p.get("email_status") == "verified") else "unknown",
                             "source_provider": "apollo_api",
                             "source_url": f"https://{norm_dom}",
                             "opportunity_type": service_target.lower().replace(" ", "_"),
-                            "evidence_excerpt": f"Verified organization registered in {industry} market ({market}) with active domain {norm_dom}.",
-                            "fit_score": 80,
+                            "evidence_excerpt": f"Verified organizational profile for {org.get('name', norm_dom)} in {industry} ({market}).",
+                            "fit_score": 85,
                         })
                     if results:
                         return results
                 elif resp.status_code == 429:
-                    raise ApiRateLimitException(
-                        f"API Rate Limit or Quota Reached for key 'APOLLO_API_KEY' (Apollo.io). "
-                        f"Monthly search credit or rate limit exhausted: {resp.text[:200]}"
-                    )
-                elif resp.status_code in (401, 403):
-                    raise ApiAuthenticationException(
-                        f"Apollo API Authentication Failed for key 'APOLLO_API_KEY' (HTTP {resp.status_code}): "
-                        f"Invalid key or plan lacks Search API permissions: {resp.text[:200]}"
-                    )
-                else:
-                    logger.warning(f"Apollo API returned HTTP {resp.status_code}: {resp.text[:200]}")
+                    raise ApiRateLimitException("APOLLO_API_KEY", f"Monthly search credit or rate limit exhausted: {resp.text[:200]}")
+                # If 403 or 422 (e.g. free plan where mixed_people is restricted), proceed to organizations/search fallback
         except (ApiRateLimitException, ApiAuthenticationException):
             raise
         except Exception as e:
-            logger.warning(f"Apollo API request failed: {e}")
+            logger.warning(f"Apollo mixed_people/search unavailable, falling back to organizations/search: {e}")
+
+        # 2. Resilient Fallback: organizations/search (Fully supported on Apollo Free and Paid plans)
+        try:
+            async with httpx.AsyncClient(timeout=12.0) as client:
+                keyword_tags = [k for k in [query, industry] if k and k.lower() not in ("all", "global")]
+                locations = [market] if market and market.lower() not in ("all", "global") else []
+                org_payload: dict[str, Any] = {
+                    "page": 1,
+                    "per_page": limit,
+                }
+                if keyword_tags:
+                    org_payload["q_organization_keyword_tags"] = keyword_tags
+                if locations:
+                    org_payload["organization_locations"] = locations
+
+                org_resp = await client.post(
+                    "https://api.apollo.io/v1/organizations/search",
+                    headers=headers,
+                    json=org_payload,
+                )
+                if org_resp.status_code == 200:
+                    org_data = org_resp.json()
+                    organizations = org_data.get("organizations", [])
+                    results = []
+
+                    for org in organizations[:limit]:
+                        raw_domain = org.get("primary_domain")
+                        norm_dom = normalize_domain(raw_domain)
+                        if not norm_dom or norm_dom in BLOCKED_SEARCH_DOMAINS:
+                            continue
+
+                        company_name = org.get("name") or norm_dom.split(".")[0].title()
+                        contact_name = None
+                        contact_title = "Founder / Executive"
+                        business_email = None
+                        email_status = "unknown"
+
+                        # Enrich with Hunter.io if HUNTER_API_KEY is available
+                        if settings.HUNTER_API_KEY:
+                            try:
+                                h_resp = await client.get(
+                                    "https://api.hunter.io/v2/domain-search",
+                                    params={"domain": norm_dom, "api_key": settings.HUNTER_API_KEY, "limit": 1},
+                                    timeout=6.0,
+                                )
+                                if h_resp.status_code == 200:
+                                    h_data = h_resp.json().get("data", {})
+                                    emails = h_data.get("emails", [])
+                                    if emails:
+                                        first_contact = emails[0]
+                                        business_email = first_contact.get("value")
+                                        fn = first_contact.get("first_name", "")
+                                        ln = first_contact.get("last_name", "")
+                                        if fn or ln:
+                                            contact_name = f"{fn} {ln}".strip()
+                                        if first_contact.get("position"):
+                                            contact_title = first_contact.get("position")
+                                        email_status = "verified"
+                            except Exception as h_err:
+                                logger.debug(f"Hunter domain-search enrichment skipped for {norm_dom}: {h_err}")
+
+                        results.append({
+                            "company_name": company_name,
+                            "domain": norm_dom,
+                            "website_url": f"https://{norm_dom}",
+                            "country": org.get("country") or market,
+                            "industry": org.get("industry") or industry,
+                            "contact_name": contact_name,
+                            "contact_title": contact_title,
+                            "business_email": business_email,
+                            "email_status": email_status,
+                            "source_provider": "apollo_organizations_api",
+                            "source_url": f"https://{norm_dom}",
+                            "opportunity_type": service_target.lower().replace(" ", "_"),
+                            "evidence_excerpt": f"Verified organization registered in {industry} ({market}) with active domain {norm_dom}.",
+                            "fit_score": 85 if business_email else 75,
+                        })
+
+                    if results:
+                        return results
+                elif org_resp.status_code == 429:
+                    raise ApiRateLimitException("APOLLO_API_KEY", f"Monthly search credit or rate limit exhausted: {org_resp.text[:200]}")
+                elif org_resp.status_code in (401, 403):
+                    raise ApiAuthenticationException("APOLLO_API_KEY", f"Invalid key or unauthorized: {org_resp.text[:200]}")
+                else:
+                    logger.warning(f"Apollo organizations/search returned HTTP {org_resp.status_code}: {org_resp.text[:200]}")
+        except (ApiRateLimitException, ApiAuthenticationException):
+            raise
+        except Exception as e:
+            logger.warning(f"Apollo organizations/search failed: {e}")
+
         return []
 
     async def _search_web(

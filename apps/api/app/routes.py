@@ -1601,8 +1601,8 @@ async def test_integration(provider_name: str):
             async with httpx.AsyncClient(timeout=8.0) as client:
                 res = await client.post(
                     "https://api.apollo.io/v1/organizations/search",
-                    headers={"Content-Type": "application/json", "Cache-Control": "no-cache"},
-                    json={"api_key": settings.APOLLO_API_KEY, "q_organization_name": "Google", "page": 1, "per_page": 1},
+                    headers={"X-Api-Key": settings.APOLLO_API_KEY, "Content-Type": "application/json", "Cache-Control": "no-cache"},
+                    json={"q_organization_name": "Google", "page": 1, "per_page": 1},
                 )
                 if res.status_code == 200:
                     return {"status": "ok", "provider": "apollo", "detail": "Apollo.io API connected and authenticated successfully."}

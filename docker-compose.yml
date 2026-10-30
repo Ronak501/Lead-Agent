@@ -32,6 +32,7 @@ services:
       dockerfile: Dockerfile
     container_name: leadpilot-api
     restart: unless-stopped
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     environment:
       - PORT=8000
       - APP_ENV=development
@@ -50,6 +51,18 @@ services:
       - SENDER_EMAIL=${SENDER_EMAIL:-founder@ornitech.in}
       - SENDER_COMPANY=${SENDER_COMPANY:-Founder, Ornitech Solutions}
       - SENDER_WEBSITE=${SENDER_WEBSITE:-https://ornitech.in}
+      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - SMTP_USE_TLS=${SMTP_USE_TLS:-true}
+      - IMAP_SERVER=${IMAP_SERVER:-imap.gmail.com}
+      - IMAP_PORT=${IMAP_PORT:-993}
+      - IMAP_USER=${IMAP_USER:-}
+      - IMAP_PASS=${IMAP_PASS:-}
+      - AUTOPILOT_AUTO_RUN=${AUTOPILOT_AUTO_RUN:-true}
+      - AUTOPILOT_INTERVAL_MINUTES=${AUTOPILOT_INTERVAL_MINUTES:-15}
+      - ADMIN_NOTIFICATION_EMAIL=${ADMIN_NOTIFICATION_EMAIL:-founder@ornitech.in}
     ports:
       - "8000:8000"
     depends_on:

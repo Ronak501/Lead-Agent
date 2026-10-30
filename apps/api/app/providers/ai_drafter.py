@@ -12,9 +12,9 @@ class EmailDraftProvider:
     """Generates evidence-grounded personalized outreach drafts using Groq LPUs (Llama 3.3/3.1) or Gemini."""
 
     def __init__(self, groq_key: str | None = None, gemini_key: str | None = None):
-        self.groq_key = groq_key or settings.GROQ_API_KEY
+        self.groq_key = groq_key if groq_key is not None else settings.GROQ_API_KEY
         self.groq_model = settings.GROQ_MODEL or "llama-3.1-8b-instant"
-        self.gemini_key = gemini_key or settings.GEMINI_API_KEY
+        self.gemini_key = gemini_key if gemini_key is not None else settings.GEMINI_API_KEY
 
     async def generate(
         self,
@@ -77,7 +77,14 @@ Respond ONLY with a JSON object in this exact schema:
         # 1. Primary Strategy: Groq API (Ultra-fast LPU inference with resilient modern model fallback)
         if self.groq_key and self.groq_key != "mock_key":
             preferred_model = self.groq_model or "llama-3.3-70b-versatile"
-            candidate_models = [preferred_model, "llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+            candidate_models = [
+                preferred_model,
+                "llama-3.3-70b-versatile",
+                "llama-3.1-8b-instant",
+                "openai/gpt-oss-120b",
+                "openai/gpt-oss-20b",
+                "qwen/qwen3.8-27b",
+            ]
             # Deduplicate preserving order
             unique_candidates = []
             for m in candidate_models:
