@@ -409,3 +409,109 @@ async def test_specific_error_messages_and_key_naming():
     assert "unverified@domain.com" in str(exc_info.value)
     assert "risky" in str(exc_info.value)
 
+
+@pytest.mark.asyncio
+async def test_dns_deliverability_scanner():
+    """Verify DNS deliverability health scanner returns structured checks for MX, SPF, DMARC, and DKIM."""
+    from app.routes import check_domain_dns_health
+
+    # Scan ornitech.in
+    result = await check_domain_dns_health("ornitech.in")
+    assert result.domain == "ornitech.in"
+    assert result.overall_score >= 80  # Ornitech has active Google Workspace MX, SPF, DMARC
+    assert result.overall_status in ["excellent", "good"]
+    assert len(result.checks) == 4
+    record_types = [c.record_type for c in result.checks]
+    assert "MX" in record_types
+    assert "SPF" in record_types
+    assert "DMARC" in record_types
+    assert "DKIM" in record_types
+
+
+@pytest.mark.asyncio
+async def test_ai_reply_classification_and_auto_suppress(db_session):
+    """Verify incoming unsubscribe reply triggers auto-suppression and positive reply triggers meeting suggestions."""
+    from app.providers.ai_drafter import EmailDraftProvider
+    from app.routes import record_draft_reply, RecordReplyRequest
+
+    ai_drafter = EmailDraftProvider()
+
+    # 1. Test opt-out reply
+    opt_out = await ai_drafter.classify_reply_and_suggest("Please unsubscribe me and stop emailing.")
+    assert opt_out["sentiment"] == "unsubscribe"
+    assert opt_out["intent"] == "unsubscribe"
+    assert opt_out["should_suppress"] is True
+
+    # 2. Test meeting request reply
+    meeting = await ai_drafter.classify_reply_and_suggest("I am interested in your redesign pitch, can we hop on a quick call?")
+    assert meeting["sentiment"] == "positive"
+    assert meeting["intent"] == "meeting_request"
+    assert meeting["should_suppress"] is False
+    assert "cal.com/ornitech/intro" in meeting["suggested_reply"]
+
+    # 3. Test record_draft_reply route auto-suppression
+    ws = db_session.query(Workspace).filter_by(id="ws_test").first()
+    comp = Company(workspace_id=ws.id, name="OptOut Corp", domain="optoutcorp.com")
+    db_session.add(comp)
+    db_session.flush()
+
+    cnt = Contact(company_id=comp.id, full_name="Bob User", business_email="bob@optoutcorp.com", email_status="verified")
+    db_session.add(cnt)
+    db_session.flush()
+
+    lead = Lead(campaign_id="cmp_test", company_id=comp.id, contact_id=cnt.id, status="sent")
+    db_session.add(lead)
+    db_session.flush()
+
+    draft = EmailDraft(lead_id=lead.id, subject="Pitch", body_text="Hello Bob", status="sent", sent_at=datetime.now(timezone.utc))
+    db_session.add(draft)
+    db_session.commit()
+
+    # Bob replies asking to unsubscribe
+    reply_req = RecordReplyRequest(reply_text="Please remove me from your list immediately.", sender_email="bob@optoutcorp.com")
+    res = await record_draft_reply(draft.id, reply_req, db_session)
+
+    assert res["status"] == "success"
+    assert res["auto_suppressed"] is True
+
+    # Verify suppression record was created
+    supp = db_session.query(Suppression).filter_by(workspace_id=ws.id, email_normalized="bob@optoutcorp.com").first()
+    assert supp is not None
+    assert supp.reason == "opt_out"
+
+
+@pytest.mark.asyncio
+async def test_followup_draft_generation(db_session):
+    """Verify multi-touch follow-up sequence generator creates high-converting bump and breakup drafts."""
+    from app.routes import generate_lead_followup, FollowupDraftRequest
+
+    ws = db_session.query(Workspace).filter_by(id="ws_test").first()
+    comp = Company(workspace_id=ws.id, name="Fintech Scale", domain="fintechscale.in")
+    db_session.add(comp)
+    db_session.flush()
+
+    cnt = Contact(company_id=comp.id, full_name="Karan Patel", business_email="karan@fintechscale.in", email_status="verified")
+    db_session.add(cnt)
+    db_session.flush()
+
+    lead = Lead(campaign_id="cmp_test", company_id=comp.id, contact_id=cnt.id, status="sent", opportunity_type="Next.js Performance Revamp")
+    db_session.add(lead)
+    db_session.flush()
+
+    initial_draft = EmailDraft(lead_id=lead.id, subject="Idea for Fintech Scale's web presence", body_text="Initial pitch", status="sent")
+    db_session.add(initial_draft)
+    db_session.commit()
+
+    # Step 1: 3-day bump
+    step1 = await generate_lead_followup(lead.id, FollowupDraftRequest(step=1), db_session)
+    assert step1.subject == "Re: Idea for Fintech Scale's web presence"
+    assert "bump" in step1.body_text.lower()
+    assert step1.status == "pending_review"
+
+    # Step 2: 7-day breakup
+    step2 = await generate_lead_followup(lead.id, FollowupDraftRequest(step=2), db_session)
+    assert step2.subject == "Re: Idea for Fintech Scale's web presence"
+    assert "won't follow up again" in step2.body_text.lower()
+    assert step2.status == "pending_review"
+
+

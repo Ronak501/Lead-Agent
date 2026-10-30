@@ -14,8 +14,10 @@ import {
   Terminal,
   UserCheck,
   Zap,
+  Clock,
 } from 'lucide-react';
 import { Lead } from './types';
+import { useApp } from '../context/AppContext';
 
 interface LeadDetailsViewProps {
   lead: Lead | null;
@@ -33,6 +35,8 @@ export const LeadDetailsView: React.FC<LeadDetailsViewProps> = ({
   onGenerateDraft,
   loading,
 }) => {
+  const { handleGenerateFollowup } = useApp();
+
   if (!lead) {
     return (
       <div className="rounded-[28px_20px_30px_18px] border border-[#ddd5c3] bg-[#f5eddf] p-12 text-center space-y-4 font-sans text-[#29251d]">
@@ -83,6 +87,16 @@ export const LeadDetailsView: React.FC<LeadDetailsViewProps> = ({
             <Sparkles size={13} className="text-[#b9b28b]" />
             Generate Draft
           </button>
+          {lead.has_draft && (
+            <button
+              onClick={() => handleGenerateFollowup(lead.id, 1)}
+              disabled={loading}
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-3.5 py-2 rounded-[20px_14px_18px_12px] bg-[#694737] hover:bg-[#52362b] text-[#f5eddf] text-xs font-semibold shadow-xs transition-all disabled:opacity-50 active:scale-[0.98]"
+            >
+              <Clock size={13} className="text-[#eee6d6]" />
+              Follow-Up Sequence
+            </button>
+          )}
         </div>
       </div>
 

@@ -1,5 +1,6 @@
 import csv
 import io
+import logging
 from datetime import datetime, timezone
 import json
 import uuid
@@ -9,6 +10,8 @@ from typing import Optional
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status, BackgroundTasks
 from fastapi.responses import HTMLResponse
+
+logger = logging.getLogger("leadpilot.routes")
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pydantic import BaseModel
@@ -68,6 +71,11 @@ from .schemas import (
     GoogleAuthVerifyResponse,
     OrnitechLoginRequest,
     AutomationRunResponse,
+    DnsHealthCheckItem,
+    DomainDnsHealthResponse,
+    ReplyClassificationRequest,
+    ReplyClassificationResponse,
+    FollowupDraftRequest,
 )
 from .providers.discovery import (
     CompanyDiscoveryProvider,
@@ -988,6 +996,78 @@ async def generate_draft(payload: DraftGenerate, db: Session = Depends(get_db)):
     )
 
 
+@router.post("/leads/{lead_id}/generate-followup", response_model=EmailDraftOut, status_code=status.HTTP_201_CREATED)
+async def generate_lead_followup(
+    lead_id: str,
+    payload: FollowupDraftRequest = FollowupDraftRequest(),
+    db: Session = Depends(get_db),
+):
+    """Generates a high-converting, concise multi-touch follow-up draft (Step 1 = 3-day bump; Step 2 = 7-day breakup) linked to the lead."""
+    lead = db.query(Lead).filter_by(id=lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    company = lead.company
+    contact = lead.contact
+    comp_name = company.name if company else "Your Company"
+    contact_name = contact.full_name if contact else None
+    contact_title = contact.title if contact else None
+
+    # Retrieve subject from the initial draft if one exists
+    orig_draft = (
+        db.query(EmailDraft)
+        .filter_by(lead_id=lead_id)
+        .order_by(EmailDraft.generated_at.asc())
+        .first()
+    )
+    orig_subject = orig_draft.subject if orig_draft else f"Idea for {comp_name}'s web presence"
+    service_offer = lead.opportunity_type or "Modern web development and conversion optimization"
+
+    ai_drafter = EmailDraftProvider()
+    draft_res = await ai_drafter.generate_followup_draft(
+        company_name=comp_name,
+        contact_name=contact_name,
+        contact_title=contact_title,
+        original_subject=orig_subject,
+        service_offer=service_offer,
+        step=payload.step,
+    )
+
+    new_draft = EmailDraft(
+        lead_id=lead.id,
+        subject=draft_res["subject"],
+        body_text=draft_res["body_text"],
+        evidence_urls=orig_draft.evidence_urls if orig_draft else [],
+        confidence=draft_res["confidence"],
+        model=draft_res["model"],
+        status="pending_review",
+    )
+    db.add(new_draft)
+    lead.status = "draft_generated"
+    db.commit()
+    db.refresh(new_draft)
+
+    return EmailDraftOut(
+        id=new_draft.id,
+        lead_id=new_draft.lead_id,
+        company_name=comp_name,
+        contact_name=contact_name,
+        business_email=contact.business_email if contact else None,
+        email_status=contact.email_status if contact else "unknown",
+        subject=new_draft.subject,
+        body_text=new_draft.body_text,
+        evidence_urls=new_draft.evidence_urls or [],
+        confidence=new_draft.confidence,
+        model=new_draft.model,
+        status=new_draft.status,
+        approved_by=new_draft.approved_by,
+        approved_at=new_draft.approved_at,
+        sent_at=new_draft.sent_at,
+        provider_message_id=new_draft.provider_message_id,
+        generated_at=new_draft.generated_at,
+    )
+
+
 @router.put("/drafts/{draft_id}", response_model=EmailDraftOut)
 def update_draft(draft_id: str, payload: DraftUpdate, db: Session = Depends(get_db)):
     """Edits draft content. Note: Editing an approved draft resets its status to pending_review."""
@@ -1252,10 +1332,30 @@ async def send_draft(draft_id: str, db: Session = Depends(get_db)):
     )
 
 
+@router.post("/replies/classify", response_model=ReplyClassificationResponse)
+async def classify_prospect_reply(payload: ReplyClassificationRequest):
+    """Analyzes an incoming cold email reply using Groq LPUs, extracts sentiment and intent, and generates a ready-to-send response with calendar booking."""
+    ai_drafter = EmailDraftProvider()
+    res = await ai_drafter.classify_reply_and_suggest(
+        reply_text=payload.reply_text,
+        sender_name=payload.sender_name,
+        company_name=payload.company_name,
+        booking_url=payload.booking_url or "https://cal.com/ornitech/intro",
+    )
+    return ReplyClassificationResponse(
+        sentiment=res.get("sentiment", "positive"),
+        intent=res.get("intent", "meeting_request"),
+        confidence=res.get("confidence", 0.90),
+        summary=res.get("summary", ""),
+        should_suppress=res.get("should_suppress", False),
+        suggested_reply=res.get("suggested_reply", ""),
+    )
+
+
 @router.post("/drafts/{draft_id}/reply", response_model=dict)
-def record_draft_reply(draft_id: str, payload: RecordReplyRequest, db: Session = Depends(get_db)):
+async def record_draft_reply(draft_id: str, payload: RecordReplyRequest, db: Session = Depends(get_db)):
     """Records an incoming reply for a sent outreach email.
-    Logs the reply event, records recipient feedback/notes, and updates lead & draft statuses.
+    Analyzes intent via AI, auto-suppresses unsubscribes, logs reply events, and updates lead & draft statuses.
     """
     draft = db.query(EmailDraft).filter_by(id=draft_id).first()
     if not draft:
@@ -1264,6 +1364,38 @@ def record_draft_reply(draft_id: str, payload: RecordReplyRequest, db: Session =
     sender = payload.sender_email
     if not sender and draft.lead and draft.lead.contact:
         sender = draft.lead.contact.business_email or "prospect"
+
+    # Run AI Reply Intelligence
+    ai_drafter = EmailDraftProvider()
+    contact_name = draft.lead.contact.full_name if draft.lead and draft.lead.contact else None
+    comp_name = draft.lead.company.name if draft.lead and draft.lead.company else None
+
+    ai_analysis = await ai_drafter.classify_reply_and_suggest(
+        reply_text=payload.reply_text,
+        sender_name=contact_name,
+        company_name=comp_name,
+    )
+
+    # Auto-suppression if unsubscribe or opt-out requested
+    auto_suppressed = False
+    if ai_analysis.get("should_suppress") and draft.lead and draft.lead.company:
+        norm_email = normalize_email(sender or "")
+        norm_domain = normalize_domain(draft.lead.company.domain or "")
+        if norm_email:
+            supp_exists = db.query(Suppression).filter_by(
+                workspace_id=draft.lead.company.workspace_id,
+                email_normalized=norm_email,
+            ).first()
+            if not supp_exists:
+                db.add(Suppression(
+                    workspace_id=draft.lead.company.workspace_id,
+                    email_normalized=norm_email,
+                    domain_normalized=norm_domain,
+                    reason="opt_out",
+                    source="ai_reply_classifier",
+                ))
+                auto_suppressed = True
+                logger.info(f"🛑 Auto-suppressed {norm_email} following opt-out reply.")
 
     event = EmailEvent(
         draft_id=draft.id,
@@ -1274,6 +1406,11 @@ def record_draft_reply(draft_id: str, payload: RecordReplyRequest, db: Session =
             "reply_text": payload.reply_text,
             "sender": sender,
             "notes": payload.notes or "",
+            "ai_sentiment": ai_analysis.get("sentiment"),
+            "ai_intent": ai_analysis.get("intent"),
+            "ai_summary": ai_analysis.get("summary"),
+            "suggested_reply": ai_analysis.get("suggested_reply"),
+            "auto_suppressed": auto_suppressed,
         }),
     )
     db.add(event)
@@ -1283,11 +1420,24 @@ def record_draft_reply(draft_id: str, payload: RecordReplyRequest, db: Session =
         draft.lead.status = "replied"
 
     db.commit()
+
+    # If notification email configured, dispatch alert
+    if draft.lead and sender:
+        send_reply_notification_email(
+            lead=draft.lead,
+            reply_subject=f"Re: {draft.subject}",
+            reply_body=payload.reply_text,
+            from_email=sender,
+            ai_analysis=ai_analysis,
+        )
+
     return {
         "status": "success",
-        "message": "Reply recorded successfully",
+        "message": "Reply recorded and analyzed by AI successfully",
         "draft_id": draft.id,
         "reply_count": sum(1 for e in draft.events if e.event_type == "replied"),
+        "ai_analysis": ai_analysis,
+        "auto_suppressed": auto_suppressed,
     }
 
 
@@ -1690,6 +1840,198 @@ def get_analytics(db: Session = Depends(get_db)):
         reply_rate=reply_rate,
         suppressed_count=suppressed_count,
         conversion_rate=conversion_rate,
+    )
+
+
+# ==================== DELIVERABILITY & DNS HEALTH ====================
+
+@router.get("/deliverability/dns-health", response_model=DomainDnsHealthResponse)
+async def check_domain_dns_health(domain: str = Query(default="ornitech.in")):
+    """Performs real-time DNS-over-HTTPS inspection of MX, SPF, DMARC, and DKIM records.
+    Calculates a 0-100 deliverability health score and actionable diagnostics to prevent spam folder placement.
+    """
+    clean_domain = normalize_domain(domain)
+    if not clean_domain:
+        clean_domain = "ornitech.in"
+
+    checks: list[DnsHealthCheckItem] = []
+    recommendations: list[str] = []
+    score = 0
+
+    async with httpx.AsyncClient(timeout=8.0) as client:
+        # 1. MX Records
+        mx_records = []
+        try:
+            resp = await client.get(f"https://dns.google/resolve?name={clean_domain}&type=MX")
+            if resp.status_code == 200:
+                mx_records = [ans.get("data") for ans in resp.json().get("Answer", []) if ans.get("data")]
+        except Exception as e:
+            logger.warning(f"Error querying MX records for {clean_domain}: {e}")
+
+        if mx_records:
+            score += 25
+            checks.append(DnsHealthCheckItem(
+                record_type="MX",
+                status="pass",
+                title="Mail Exchanger (MX) Records",
+                detail=f"Found {len(mx_records)} active MX record(s). Inbound routing is properly established.",
+                raw_data=mx_records,
+            ))
+        else:
+            checks.append(DnsHealthCheckItem(
+                record_type="MX",
+                status="fail",
+                title="Mail Exchanger (MX) Records",
+                detail="No MX records found. Emails sent from this domain will fail sender verification and bounce.",
+                raw_data=[],
+            ))
+            recommendations.append(f"Configure MX records for {clean_domain} in your DNS provider (e.g. Google Workspace or Zoho Mail).")
+
+        # 2. SPF Record
+        txt_records = []
+        try:
+            resp = await client.get(f"https://dns.google/resolve?name={clean_domain}&type=TXT")
+            if resp.status_code == 200:
+                txt_records = [ans.get("data") for ans in resp.json().get("Answer", []) if ans.get("data")]
+        except Exception as e:
+            logger.warning(f"Error querying TXT records for {clean_domain}: {e}")
+
+        spf_records = [t.strip('"') for t in txt_records if "v=spf1" in t]
+        if len(spf_records) == 1:
+            spf = spf_records[0]
+            if "+all" in spf:
+                score += 10
+                checks.append(DnsHealthCheckItem(
+                    record_type="SPF",
+                    status="warning",
+                    title="Sender Policy Framework (SPF)",
+                    detail="SPF record contains '+all' which permits any server on the internet to send email on your behalf. This is a severe security risk.",
+                    raw_data=spf_records,
+                ))
+                recommendations.append("Change '+all' to '~all' (SoftFail) or '-all' (HardFail) in your SPF record.")
+            else:
+                score += 35
+                checks.append(DnsHealthCheckItem(
+                    record_type="SPF",
+                    status="pass",
+                    title="Sender Policy Framework (SPF)",
+                    detail="Valid SPF authentication record detected with strict/soft fail protection.",
+                    raw_data=spf_records,
+                ))
+        elif len(spf_records) > 1:
+            score += 15
+            checks.append(DnsHealthCheckItem(
+                record_type="SPF",
+                status="warning",
+                title="Sender Policy Framework (SPF)",
+                detail=f"Multiple SPF records found ({len(spf_records)}). RFC specifications require exactly ONE SPF record per domain; multiple records will cause deliverability failures.",
+                raw_data=spf_records,
+            ))
+            recommendations.append("Merge multiple SPF TXT records into a single record to prevent DNS lookup errors.")
+        else:
+            checks.append(DnsHealthCheckItem(
+                record_type="SPF",
+                status="fail",
+                title="Sender Policy Framework (SPF)",
+                detail="No SPF record found. Major providers (Gmail, Yahoo, Outlook) will route emails to the spam folder.",
+                raw_data=[],
+            ))
+            recommendations.append(f"Add an SPF TXT record: 'v=spf1 include:_spf.google.com ~all' (or your sending provider's include).")
+
+        # 3. DMARC Record
+        dmarc_records = []
+        try:
+            resp = await client.get(f"https://dns.google/resolve?name=_dmarc.{clean_domain}&type=TXT")
+            if resp.status_code == 200:
+                dmarc_records = [ans.get("data") for ans in resp.json().get("Answer", []) if ans.get("data") and "v=DMARC1" in ans.get("data")]
+        except Exception as e:
+            logger.warning(f"Error querying DMARC records for {clean_domain}: {e}")
+
+        dmarc_clean = [d.strip('"') for d in dmarc_records]
+        if dmarc_clean:
+            dmarc_text = dmarc_clean[0].lower()
+            if "p=reject" in dmarc_text or "p=quarantine" in dmarc_text:
+                score += 30
+                checks.append(DnsHealthCheckItem(
+                    record_type="DMARC",
+                    status="pass",
+                    title="DMARC Domain Alignment Policy",
+                    detail="DMARC policy is set to enforce quarantine/reject on spoofed emails. Full spoofing protection active.",
+                    raw_data=dmarc_clean,
+                ))
+            else:
+                score += 20
+                checks.append(DnsHealthCheckItem(
+                    record_type="DMARC",
+                    status="warning",
+                    title="DMARC Domain Alignment Policy",
+                    detail="DMARC record exists with 'p=none' (monitoring mode). Spoofed emails will not be rejected by receivers.",
+                    raw_data=dmarc_clean,
+                ))
+                recommendations.append("Once deliverability is verified, elevate your DMARC policy from 'p=none' to 'p=quarantine' or 'p=reject'.")
+        else:
+            checks.append(DnsHealthCheckItem(
+                record_type="DMARC",
+                status="fail",
+                title="DMARC Domain Alignment Policy",
+                detail=f"No DMARC record found at _dmarc.{clean_domain}. Google and Yahoo now mandate DMARC for inbox delivery.",
+                raw_data=[],
+            ))
+            recommendations.append(f"Add a DMARC TXT record at '_dmarc.{clean_domain}' with value: 'v=DMARC1; p=none; rua=mailto:dmarc-reports@{clean_domain}'.")
+
+        # 4. DKIM Selectors Check
+        dkim_found = []
+        common_selectors = ["google", "default", "selector1", "mail", "k1"]
+        for sel in common_selectors:
+            try:
+                resp = await client.get(f"https://dns.google/resolve?name={sel}._domainkey.{clean_domain}&type=TXT")
+                if resp.status_code == 200:
+                    ans = [a.get("data") for a in resp.json().get("Answer", []) if a.get("data") and "v=DKIM1" in a.get("data")]
+                    if ans:
+                        dkim_found.append(f"{sel}._domainkey.{clean_domain}")
+            except Exception:
+                pass
+
+        if dkim_found:
+            score += 10
+            checks.append(DnsHealthCheckItem(
+                record_type="DKIM",
+                status="pass",
+                title="DomainKeys Identified Mail (DKIM)",
+                detail=f"DKIM public key confirmed on selector: {dkim_found[0]}",
+                raw_data=dkim_found,
+            ))
+        else:
+            score += 5
+            checks.append(DnsHealthCheckItem(
+                record_type="DKIM",
+                status="warning",
+                title="DomainKeys Identified Mail (DKIM)",
+                detail="No DKIM key found on standard selectors (google, default, selector1). If you use a custom DKIM selector, verify it in your email provider.",
+                raw_data=[],
+            ))
+            recommendations.append("Verify your DKIM TXT record selector in your email provider settings (e.g. Google Workspace Admin Console).")
+
+    if score >= 90:
+        overall_status = "excellent"
+        verdict = f"{clean_domain} has world-class deliverability health. Outreach emails will land directly in the primary inbox."
+    elif score >= 75:
+        overall_status = "good"
+        verdict = f"{clean_domain} has good email authentication, with minor optimizations recommended."
+    elif score >= 50:
+        overall_status = "fair"
+        verdict = f"{clean_domain} has incomplete email authentication. Outreach emails run a risk of spam folder placement."
+    else:
+        overall_status = "critical"
+        verdict = f"{clean_domain} is missing critical email authentication records. Immediate action required before sending outreach."
+
+    return DomainDnsHealthResponse(
+        domain=clean_domain,
+        overall_score=min(score, 100),
+        overall_status=overall_status,
+        verdict=verdict,
+        checks=checks,
+        recommendations=recommendations,
     )
 
 

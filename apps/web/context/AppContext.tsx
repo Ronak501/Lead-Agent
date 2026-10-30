@@ -47,6 +47,9 @@ interface AppContextType {
   handleCreateCampaign: (formData: any) => Promise<boolean>;
   handleDiscoverLeads: (formData: any) => Promise<boolean>;
   handleAutoProfileDomain: (domain: string) => Promise<any>;
+  handleCheckDnsHealth: (domain?: string) => Promise<any>;
+  handleClassifyReply: (replyText: string, senderName?: string, companyName?: string) => Promise<any>;
+  handleGenerateFollowup: (leadId: string, step?: number) => Promise<boolean>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -504,6 +507,66 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const handleCheckDnsHealth = async (domain = 'ornitech.in') => {
+    try {
+      const res = await fetch(`${API}/api/deliverability/dns-health?domain=${encodeURIComponent(domain)}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Failed to inspect domain DNS health');
+      }
+      return await res.json();
+    } catch (err: any) {
+      notify(`DNS Health Check failed: ${err.message}`, 'error');
+      return null;
+    }
+  };
+
+  const handleClassifyReply = async (replyText: string, senderName?: string, companyName?: string) => {
+    try {
+      const res = await fetch(`${API}/api/replies/classify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reply_text: replyText,
+          sender_name: senderName,
+          company_name: companyName,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Failed to classify reply');
+      }
+      return await res.json();
+    } catch (err: any) {
+      notify(`Reply classification error: ${err.message}`, 'error');
+      return null;
+    }
+  };
+
+  const handleGenerateFollowup = async (leadId: string, step = 1) => {
+    try {
+      setLoading(true);
+      notify(`Drafting Step ${step} follow-up sequence with AI...`, 'info');
+      const res = await fetch(`${API}/api/leads/${leadId}/generate-followup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ step }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Failed to generate follow-up draft');
+      }
+      notify(`✨ Follow-up Step ${step} draft created! Ready for review in Approval Queue.`, 'success');
+      await fetchData();
+      return true;
+    } catch (err: any) {
+      notify(`Error generating follow-up: ${err.message}`, 'error');
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -540,6 +603,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         handleCreateCampaign,
         handleDiscoverLeads,
         handleAutoProfileDomain,
+        handleCheckDnsHealth,
+        handleClassifyReply,
+        handleGenerateFollowup,
       }}
     >
       {children}

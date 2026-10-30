@@ -204,6 +204,190 @@ Respond ONLY with a JSON object in this exact schema:
             "model": "grounded-heuristic-engine",
         }
 
+    async def classify_reply_and_suggest(
+        self,
+        reply_text: str,
+        sender_name: str | None = None,
+        company_name: str | None = None,
+        booking_url: str | None = None,
+    ) -> dict[str, Any]:
+        """Analyzes an incoming cold email reply using Groq AI, determines intent and sentiment, and drafts a high-converting response."""
+        cal_url = booking_url or "https://cal.com/ornitech/intro"
+        our_name = settings.SENDER_NAME or "Ronak Talaviya"
+        our_company = settings.SENDER_COMPANY or "Founder, Ornitech Solutions"
+        our_website = settings.SENDER_WEBSITE or "https://ornitech.in"
+        prospect_name = sender_name or "there"
+
+        # Check for immediate unsubscribe / opt-out cues
+        lower_reply = reply_text.lower()
+        unsub_cues = ["unsubscribe", "remove me", "take me off", "stop emailing", "spam", "not interested", "dont contact"]
+        is_opt_out = any(cue in lower_reply for cue in unsub_cues)
+
+        prompt = f"""You are an elite B2B sales development AI assistant.
+Analyze this incoming prospect email reply and provide a structured classification and a courteous response.
+
+Context:
+- Prospect Name: {prospect_name}
+- Prospect Company: {company_name or 'their company'}
+- Our Founder: {our_name} ({our_company}, {our_website})
+- Our Calendar Booking Link: {cal_url}
+
+Incoming Prospect Reply:
+\"\"\"{reply_text.strip()}\"\"\"
+
+Instructions:
+1. Classify sentiment: "positive", "objection", "neutral", "out_of_office", or "unsubscribe".
+2. Classify intent: "meeting_request", "more_info", "pricing_inquiry", "objection", "unsubscribe", or "out_of_office".
+3. If the prospect is interested, asking for a meeting, or curious, draft an enthusiastic, brief response (under 60 words) providing the calendar link {cal_url}.
+4. If the prospect requests to be removed or is hostile, set should_suppress to true and draft a polite 1-sentence confirmation that they will never be contacted again.
+5. If it's an objection (e.g. 'we have an in-house team'), draft a polite, value-adding response acknowledging it without being pushy.
+
+Respond ONLY with a JSON object in this exact schema:
+{{
+  "sentiment": "positive",
+  "intent": "meeting_request",
+  "confidence": 0.95,
+  "summary": "One sentence summary of prospect's intent",
+  "should_suppress": false,
+  "suggested_reply": "Exact ready-to-send reply text with signature"
+}}"""
+
+        if self.groq_key and self.groq_key != "mock_key":
+            preferred_model = self.groq_model or "openai/gpt-oss-120b"
+            candidates = [preferred_model, "openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b", "llama-3.3-70b-versatile"]
+            unique_candidates = []
+            for m in candidates:
+                if m and m not in unique_candidates:
+                    unique_candidates.append(m)
+
+            for model in unique_candidates:
+                try:
+                    async with httpx.AsyncClient(timeout=8.0) as client:
+                        resp = await client.post(
+                            "https://api.groq.com/openai/v1/chat/completions",
+                            headers={
+                                "Authorization": f"Bearer {self.groq_key}",
+                                "Content-Type": "application/json",
+                            },
+                            json={
+                                "model": model,
+                                "messages": [
+                                    {
+                                        "role": "system",
+                                        "content": "You are a professional B2B email sentiment and reply assistant. Always return valid JSON format.",
+                                    },
+                                    {"role": "user", "content": prompt},
+                                ],
+                                "response_format": {"type": "json_object"},
+                                "temperature": 0.2,
+                                "max_tokens": 400,
+                            },
+                        )
+                        if resp.status_code == 200:
+                            data = resp.json()
+                            parsed = json.loads(data["choices"][0]["message"]["content"])
+                            return {
+                                "sentiment": parsed.get("sentiment", "positive" if not is_opt_out else "unsubscribe"),
+                                "intent": parsed.get("intent", "meeting_request" if not is_opt_out else "unsubscribe"),
+                                "confidence": float(parsed.get("confidence", 0.90)),
+                                "summary": parsed.get("summary", "Prospect responded to outreach email."),
+                                "should_suppress": bool(parsed.get("should_suppress", is_opt_out)),
+                                "suggested_reply": parsed.get("suggested_reply", "").strip(),
+                            }
+                except Exception as e:
+                    logger.warning(f"Groq reply classification with {model} failed: {e}. Trying fallback.")
+
+        # Heuristic Rule-Based Fallback
+        if is_opt_out:
+            return {
+                "sentiment": "unsubscribe",
+                "intent": "unsubscribe",
+                "confidence": 0.98,
+                "summary": "Prospect requested to be removed from outreach list.",
+                "should_suppress": True,
+                "suggested_reply": (
+                    f"Hi {prospect_name},\n\n"
+                    "Understood completely. I have removed your email and company from our contact list and you will not receive any further emails.\n\n"
+                    f"Best regards,\n{our_name}\n{our_company}"
+                ),
+            }
+
+        # Check positive cues
+        positive_cues = ["interested", "call", "meet", "schedule", "zoom", "pricing", "cost", "proposal", "send details", "lets talk", "sure"]
+        if any(cue in lower_reply for cue in positive_cues):
+            return {
+                "sentiment": "positive",
+                "intent": "meeting_request",
+                "confidence": 0.92,
+                "summary": "Prospect showed positive interest or requested a meeting/pricing.",
+                "should_suppress": False,
+                "suggested_reply": (
+                    f"Hi {prospect_name},\n\n"
+                    "Thanks for getting back to me! I would be glad to share more details and walk you through what we found.\n\n"
+                    f"Would you like to pick a quick 10-minute slot on my calendar here? {cal_url}\n\n"
+                    "Looking forward to connecting!\n\n"
+                    f"Best regards,\n{our_name}\n{our_company}\n{our_website}"
+                ),
+            }
+
+        # Default Neutral
+        return {
+            "sentiment": "neutral",
+            "intent": "more_info",
+            "confidence": 0.75,
+            "summary": "Prospect acknowledged email with general response.",
+            "should_suppress": False,
+            "suggested_reply": (
+                f"Hi {prospect_name},\n\n"
+                "Thanks for following up! Happy to answer any questions or share a quick 2-minute overview.\n\n"
+                f"Feel free to grab a time that suits you here: {cal_url}\n\n"
+                f"Best regards,\n{our_name}\n{our_company}\n{our_website}"
+            ),
+        }
+
+    async def generate_followup_draft(
+        self,
+        company_name: str,
+        contact_name: str | None,
+        contact_title: str | None,
+        original_subject: str,
+        service_offer: str,
+        step: int = 1,
+    ) -> dict[str, Any]:
+        """Generates a high-converting, concise multi-touch follow-up draft (Step 1 = 3-day bump; Step 2 = 7-day breakup)."""
+        our_name = settings.SENDER_NAME or "Ronak Talaviya"
+        our_company = settings.SENDER_COMPANY or "Founder, Ornitech Solutions"
+        our_website = settings.SENDER_WEBSITE or "https://ornitech.in"
+        first_name = contact_name.split()[0] if contact_name else "there"
+
+        # Threaded subject line
+        subject = original_subject if original_subject.lower().startswith("re:") else f"Re: {original_subject}"
+
+        if step == 1:
+            # Step 1: Quick conversational bump (< 50 words)
+            body = (
+                f"Hi {first_name},\n\n"
+                f"Wanted to quickly bump my note below in case it got buried. We recently helped another team in your space upgrade their site speed and conversion stack.\n\n"
+                f"Would you be open to a 5-minute look at the opportunities we spotted for {company_name}?\n\n"
+                f"Best regards,\n{our_name}\n{our_company}\n{our_website}"
+            )
+        else:
+            # Step 2: Graceful breakup note (< 40 words)
+            body = (
+                f"Hi {first_name},\n\n"
+                f"I assume improving {company_name}'s web performance isn't a priority right now, so I won't follow up again.\n\n"
+                f"If things change down the road, feel free to reach out anytime at {our_website}.\n\n"
+                f"Wishing you and the team continued success!\n\n"
+                f"Best regards,\n{our_name}\n{our_company}"
+            )
+
+        return {
+            "subject": subject,
+            "body_text": body,
+            "confidence": 0.95,
+            "model": "grounded-followup-engine",
+        }
+
     @staticmethod
     def compute_content_hash(subject: str, body_text: str) -> str:
         """Computes SHA256 of exact approved draft content to prevent tampering."""

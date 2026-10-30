@@ -325,3 +325,49 @@ class AutomationRunResponse(BaseModel):
     executed_at: str
 
 
+# ===================== DELIVERABILITY & DNS HEALTH SCHEMAS =====================
+
+class DnsHealthCheckItem(BaseModel):
+    record_type: str
+    status: str  # pass, warning, fail
+    title: str
+    detail: str
+    raw_data: list[str] = Field(default_factory=list)
+
+
+class DomainDnsHealthResponse(BaseModel):
+    domain: str
+    overall_score: int  # 0 to 100
+    overall_status: str  # excellent, good, fair, critical
+    verdict: str
+    checks: list[DnsHealthCheckItem]
+    recommendations: list[str]
+
+
+# ===================== AI REPLY INTELLIGENCE SCHEMAS =====================
+
+class ReplyClassificationRequest(BaseModel):
+    reply_text: str = Field(min_length=1, max_length=5000)
+    sender_name: Optional[str] = None
+    sender_email: Optional[str] = None
+    company_name: Optional[str] = None
+    booking_url: Optional[str] = None
+
+
+class ReplyClassificationResponse(BaseModel):
+    sentiment: str  # positive, objection, neutral, out_of_office, unsubscribe
+    intent: str  # meeting_request, more_info, pricing_inquiry, objection, unsubscribe, out_of_office
+    confidence: float
+    summary: str
+    should_suppress: bool
+    suggested_reply: str
+
+
+# ===================== MULTI-TOUCH FOLLOW-UP SCHEMAS =====================
+
+class FollowupDraftRequest(BaseModel):
+    step: int = Field(default=1, ge=1, le=3)
+    tone: str = Field(default="direct, respectful, and brief")
+
+
+

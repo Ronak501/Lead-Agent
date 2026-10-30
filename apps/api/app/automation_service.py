@@ -150,15 +150,44 @@ def is_target_already_contacted(
     return False, ""
 
 
-def send_reply_notification_email(lead: Lead, reply_subject: str, reply_body: str, from_email: str) -> bool:
-    """Dispatches instant email alert to founder@ornitech.in when a prospect replies to cold outreach."""
+def send_reply_notification_email(
+    lead: Lead,
+    reply_subject: str,
+    reply_body: str,
+    from_email: str,
+    ai_analysis: Optional[dict] = None,
+) -> bool:
+    """Dispatches instant email alert to founder@ornitech.in when a prospect replies to cold outreach, enriched with AI sentiment & booking suggestions."""
     admin_recipient = settings.ADMIN_NOTIFICATION_EMAIL or "founder@ornitech.in"
     company_name = lead.company.name if lead.company else "Unknown Company"
     contact_name = lead.contact.full_name if lead.contact else "Prospect"
     contact_title = lead.contact.title if lead.contact else "Decision Maker"
     website = lead.company.website_url if lead.company else ""
 
-    subject = f"🔥 [HOT LEAD REPLY] {contact_name} from {company_name} replied to outreach!"
+    sentiment = (ai_analysis or {}).get("sentiment", "positive")
+    intent = (ai_analysis or {}).get("intent", "meeting_request").replace("_", " ").title()
+    summary = (ai_analysis or {}).get("summary", "Prospect responded to cold outreach.")
+    suggested_reply = (ai_analysis or {}).get("suggested_reply", "")
+    should_suppress = (ai_analysis or {}).get("should_suppress", False)
+
+    badge_bg = "#10b981" if sentiment == "positive" else "#ef4444" if should_suppress else "#f59e0b"
+    status_label = f"🔥 HOT LEAD - {intent.upper()}" if sentiment == "positive" else f"🛑 OPT-OUT / SUPPRESSED" if should_suppress else f"ℹ️ {intent.upper()}"
+
+    subject = f"{'🔥' if sentiment == 'positive' else '✉️'} [{status_label}] {contact_name} from {company_name} replied to outreach!"
+
+    ai_section_html = ""
+    if ai_analysis:
+        ai_section_html = f"""
+        <div style="background-color: #f1f5f9; border-left: 4px solid {badge_bg}; padding: 14px; border-radius: 4px; margin-bottom: 20px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+            <p style="margin: 0; font-size: 15px; font-weight: 700; color: #0f172a;">AI Reply Intelligence</p>
+            <span style="font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 9999px; background-color: {badge_bg}; color: #ffffff;">{sentiment.upper()} &bull; {intent}</span>
+          </div>
+          <p style="margin: 0 0 10px 0; font-size: 13px; color: #334155;"><strong>Intent Summary:</strong> {summary}</p>
+          {f'<div style="background-color: #ffffff; border: 1px dashed #cbd5e1; border-radius: 6px; padding: 12px; margin-top: 8px;"><p style="margin: 0 0 6px 0; font-size: 12px; font-weight: 700; color: #2563eb;">AI Suggested Response (Ready to Copy/Send):</p><pre style="margin: 0; font-family: sans-serif; font-size: 13px; white-space: pre-wrap; color: #1e293b; line-height: 1.5;">{suggested_reply}</pre></div>' if suggested_reply else ''}
+          {f'<p style="margin: 8px 0 0 0; font-size: 12px; color: #b91c1c; font-weight: 600;">🛑 Contact has been automatically added to the Suppression table to prevent further messages.</p>' if should_suppress else ''}
+        </div>
+        """
 
     body_html = f"""
     <html>
@@ -170,7 +199,9 @@ def send_reply_notification_email(lead: Lead, reply_subject: str, reply_body: st
           </div>
           
           <div style="padding: 24px;">
-            <div style="background-color: #f1f5f9; border-left: 4px solid #3b82f6; padding: 14px; border-radius: 4px; margin-bottom: 20px;">
+            {ai_section_html}
+
+            <div style="background-color: #f8fafc; border-left: 4px solid #3b82f6; padding: 14px; border-radius: 4px; margin-bottom: 20px;">
               <p style="margin: 0; font-size: 15px; font-weight: 600; color: #0f172a;">Prospect Details</p>
               <p style="margin: 6px 0 0 0; font-size: 14px;"><strong>Name:</strong> {contact_name} ({contact_title})</p>
               <p style="margin: 4px 0 0 0; font-size: 14px;"><strong>Company:</strong> {company_name}</p>
@@ -178,7 +209,7 @@ def send_reply_notification_email(lead: Lead, reply_subject: str, reply_body: st
               {f'<p style="margin: 4px 0 0 0; font-size: 14px;"><strong>Website:</strong> <a href="{website}" target="_blank">{website}</a></p>' if website else ''}
             </div>
 
-            <h3 style="margin: 16px 0 8px 0; font-size: 16px; color: #0f172a;">Reply Content ({reply_subject}):</h3>
+            <h3 style="margin: 16px 0 8px 0; font-size: 16px; color: #0f172a;">Prospect Reply Content ({reply_subject}):</h3>
             <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 16px; font-family: monospace; font-size: 13px; color: #334155; white-space: pre-wrap;">
 {reply_body}
             </div>
@@ -688,20 +719,71 @@ class AutomationEngine:
                 if lead and lead.status != "replied":
                     lead.status = "replied"
                     draft = db.query(EmailDraft).filter_by(lead_id=lead.id).order_by(EmailDraft.sent_at.desc()).first()
+
+                    # Run AI Reply Intelligence
+                    from .providers.ai_drafter import EmailDraftProvider
+                    ai_drafter = EmailDraftProvider()
+                    contact_name = lead.contact.full_name if lead.contact else None
+                    comp_name = lead.company.name if lead.company else None
+
+                    try:
+                        import asyncio
+                        import concurrent.futures
+                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                            ai_analysis = executor.submit(
+                                asyncio.run,
+                                ai_drafter.classify_reply_and_suggest(reply_text, contact_name, comp_name)
+                            ).result(timeout=6.0)
+                    except Exception as ai_err:
+                        logger.warning(f"AI reply analysis failed, using fallback: {ai_err}")
+                        ai_analysis = {
+                            "sentiment": "positive",
+                            "intent": "meeting_request",
+                            "confidence": 0.80,
+                            "summary": "Prospect replied to outreach.",
+                            "should_suppress": False,
+                            "suggested_reply": "",
+                        }
+
+                    # Auto-suppress if opt-out/unsubscribe requested
+                    if ai_analysis.get("should_suppress") and lead.company:
+                        norm_email = normalize_email(from_email)
+                        norm_domain = normalize_domain(lead.company.domain or "")
+                        supp_exists = db.query(Suppression).filter_by(
+                            workspace_id=lead.company.workspace_id,
+                            email_normalized=norm_email,
+                        ).first()
+                        if not supp_exists:
+                            db.add(Suppression(
+                                workspace_id=lead.company.workspace_id,
+                                email_normalized=norm_email,
+                                domain_normalized=norm_domain,
+                                reason="opt_out",
+                                source="ai_reply_classifier",
+                            ))
+                            logger.info(f"🛑 Auto-suppressed {norm_email} following opt-out reply.")
+
                     if draft:
                         draft.status = "replied"
                         event = EmailEvent(
                             draft_id=draft.id,
                             event_type="replied",
                             provider="imap_listener",
-                            details=json.dumps({"reply_subject": subject, "reply_snippet": reply_text[:200]}),
+                            details=json.dumps({
+                                "reply_subject": subject,
+                                "reply_snippet": reply_text[:200],
+                                "ai_sentiment": ai_analysis.get("sentiment"),
+                                "ai_intent": ai_analysis.get("intent"),
+                                "ai_summary": ai_analysis.get("summary"),
+                                "suggested_reply": ai_analysis.get("suggested_reply"),
+                            }),
                         )
                         db.add(event)
 
                     db.commit()
 
-                    # Trigger instant email notification to founder@ornitech.in
-                    send_reply_notification_email(lead, subject, reply_text, from_email)
+                    # Trigger instant email notification to founder@ornitech.in with AI intelligence
+                    send_reply_notification_email(lead, subject, reply_text, from_email, ai_analysis=ai_analysis)
                     replies_detected += 1
 
             mail.logout()
