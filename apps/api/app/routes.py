@@ -489,147 +489,199 @@ def import_lead(payload: LeadImport, db: Session = Depends(get_db)):
 
 @router.post("/leads/discover", response_model=list[LeadOut])
 async def discover_leads(payload: LeadDiscoveryRequest, db: Session = Depends(get_db)):
-    """Runs evidence-backed discovery for companies, founders, and contact details."""
-    try:
-        candidates = await discovery_provider.search(
-            query=payload.query,
-            market=payload.market,
-            industry=payload.industry,
-            service_target=payload.service_target,
-            limit=payload.limit,
-        )
-    except ApiRateLimitException as exc:
-        raise HTTPException(status_code=429, detail=str(exc))
-    except ApiAuthenticationException as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    except ProviderNotConfiguredException as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-
+    """Runs evidence-backed discovery for companies, founders, and contact details with multi-page resilience."""
     ws_id = get_current_workspace_id()
     created_leads = []
+    skipped_already_contacted = 0
+    skipped_already_in_campaign = 0
+    total_candidates_examined = 0
 
-    for item in candidates:
-        norm_domain = normalize_domain(item.get("domain"))
-        raw_email = item.get("business_email")
-        norm_email = normalize_email(raw_email)
+    page = 1
+    max_pages = 3
+    batch_size = max(15, payload.limit * 3)
 
-        # Strict Anti-Spam & De-duplication check: Never contact same startup or founder again
-        already_contacted, reason = is_target_already_contacted(
-            db, ws_id, domain=norm_domain, email=norm_email
-        )
-        if already_contacted:
-            continue
-
-        # Check existing company by normalized domain
-        company = db.query(Company).filter_by(workspace_id=ws_id, domain=norm_domain).first() if norm_domain else None
-        if not company:
-            company = Company(
-                workspace_id=ws_id,
-                name=item["company_name"],
-                domain=norm_domain,
-                website_url=item.get("website_url") or f"https://{norm_domain}",
-                country=item.get("country", payload.market),
-                industry=item.get("industry", payload.industry),
+    while len(created_leads) < payload.limit and page <= max_pages:
+        try:
+            candidates = await discovery_provider.search(
+                query=payload.query,
+                market=payload.market,
+                industry=payload.industry,
+                service_target=payload.service_target,
+                limit=batch_size,
+                page=page,
             )
-            db.add(company)
-            db.flush()
+        except ApiRateLimitException as exc:
+            raise HTTPException(status_code=429, detail=str(exc))
+        except (ApiAuthenticationException, ProviderNotConfiguredException) as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
 
-        contact = db.query(Contact).filter_by(company_id=company.id, business_email=norm_email).first() if norm_email else None
-        if not contact and norm_email:
-            # Run email verification
-            ver = await verification_provider.verify(norm_email)
-            contact = Contact(
+        if not candidates:
+            break
+
+        total_candidates_examined += len(candidates)
+
+        for item in candidates:
+            if len(created_leads) >= payload.limit:
+                break
+
+            norm_domain = normalize_domain(item.get("domain"))
+            if not norm_domain:
+                continue
+
+            raw_email = item.get("business_email")
+            norm_email = normalize_email(raw_email)
+
+            # 1. Strict Anti-Spam Check: Never contact same startup or founder again across workspace
+            already_contacted, reason = is_target_already_contacted(
+                db, ws_id, domain=norm_domain, email=norm_email
+            )
+            if already_contacted:
+                skipped_already_contacted += 1
+                continue
+
+            # 2. Check if this company is already in this campaign
+            if payload.campaign_id:
+                existing_company = db.query(Company).filter_by(workspace_id=ws_id, domain=norm_domain).first()
+                if existing_company:
+                    existing_lead = db.query(Lead).filter_by(
+                        campaign_id=payload.campaign_id,
+                        company_id=existing_company.id,
+                    ).first()
+                    if existing_lead:
+                        skipped_already_in_campaign += 1
+                        continue
+
+            # Check existing company by normalized domain
+            company = db.query(Company).filter_by(workspace_id=ws_id, domain=norm_domain).first() if norm_domain else None
+            if not company:
+                company = Company(
+                    workspace_id=ws_id,
+                    name=item["company_name"],
+                    domain=norm_domain,
+                    website_url=item.get("website_url") or f"https://{norm_domain}",
+                    country=item.get("country", payload.market),
+                    industry=item.get("industry", payload.industry),
+                )
+                db.add(company)
+                db.flush()
+
+            contact = db.query(Contact).filter_by(company_id=company.id, business_email=norm_email).first() if norm_email else None
+            if not contact and norm_email:
+                # Run email verification
+                ver = await verification_provider.verify(norm_email)
+                contact = Contact(
+                    company_id=company.id,
+                    full_name=item.get("contact_name") or "Decision Maker",
+                    title=item.get("contact_title") or "Founder / Executive",
+                    business_email=norm_email,
+                    email_status=ver.get("status", "unknown"),
+                    source_provider=item.get("source_provider", "search_discovery"),
+                )
+                db.add(contact)
+                db.flush()
+            elif not contact and not norm_email:
+                # Contact record without email
+                contact = Contact(
+                    company_id=company.id,
+                    full_name=item.get("contact_name") or "Founder / Executive",
+                    title=item.get("contact_title") or "Decision Maker",
+                    business_email=None,
+                    email_status="unknown",
+                    source_provider=item.get("source_provider", "search_discovery"),
+                )
+                db.add(contact)
+                db.flush()
+
+            lead = Lead(
+                campaign_id=payload.campaign_id,
                 company_id=company.id,
-                full_name=item.get("contact_name") or "Decision Maker",
-                title=item.get("contact_title") or "Founder / Executive",
-                business_email=norm_email,
-                email_status=ver.get("status", "unknown"),
-                source_provider=item.get("source_provider", "search_discovery"),
+                contact_id=contact.id,
+                fit_score=item.get("fit_score", 85),
+                opportunity_type=item.get("opportunity_type", "website_redesign"),
+                status="qualified",
             )
-            db.add(contact)
+            db.add(lead)
             db.flush()
-        elif not contact and not norm_email:
-            # Contact record without email
-            contact = Contact(
+
+            # Add Source Evidence
+            ev = Evidence(
+                lead_id=lead.id,
                 company_id=company.id,
-                full_name=item.get("contact_name") or "Founder / Executive",
-                title=item.get("contact_title") or "Decision Maker",
-                business_email=None,
-                email_status="unknown",
-                source_provider=item.get("source_provider", "search_discovery"),
+                source_url=item["source_url"],
+                evidence_type="directory_listing",
+                excerpt=item["evidence_excerpt"],
+                confidence=0.88,
             )
-            db.add(contact)
+            db.add(ev)
             db.flush()
 
-        lead = Lead(
-            campaign_id=payload.campaign_id,
-            company_id=company.id,
-            contact_id=contact.id,
-            fit_score=item.get("fit_score", 85),
-            opportunity_type=item.get("opportunity_type", "website_redesign"),
-            status="qualified",
-        )
-        db.add(lead)
-        db.flush()
-
-        # Add Source Evidence
-        ev = Evidence(
-            lead_id=lead.id,
-            company_id=company.id,
-            source_url=item["source_url"],
-            evidence_type="directory_listing",
-            excerpt=item["evidence_excerpt"],
-            confidence=0.88,
-        )
-        db.add(ev)
-        db.flush()
-
-        # Audit log entry for evidence-backed discovery
-        db.add(
-            AuditLog(
-                workspace_id=ws_id,
-                user_email="system@leadpilot.ai",
-                action="lead_discovered",
-                entity_type="lead",
-                entity_id=lead.id,
-                details=f"Discovered {company.name} ({norm_domain}) for campaign {payload.campaign_id}",
+            # Audit log entry for evidence-backed discovery
+            db.add(
+                AuditLog(
+                    workspace_id=ws_id,
+                    user_email="system@leadpilot.ai",
+                    action="lead_discovered",
+                    entity_type="lead",
+                    entity_id=lead.id,
+                    details=f"Discovered {company.name} ({norm_domain}) for campaign {payload.campaign_id}",
+                )
             )
-        )
 
-        created_leads.append(
-            LeadOut(
-                id=lead.id,
-                campaign_id=lead.campaign_id,
-                company_name=company.name,
-                domain=company.domain,
-                website_url=company.website_url,
-                country=company.country,
-                industry=company.industry,
-                contact_name=contact.full_name,
-                contact_title=contact.title,
-                business_email=contact.business_email,
-                email_status=contact.email_status,
-                opportunity_type=lead.opportunity_type,
-                fit_score=lead.fit_score,
-                status=lead.status,
-                source_provider=contact.source_provider,
-                created_at=lead.created_at,
-                evidence=[
-                    EvidenceOut(
-                        id=ev.id,
-                        lead_id=lead.id,
-                        company_id=company.id,
-                        source_url=ev.source_url,
-                        evidence_type=ev.evidence_type,
-                        excerpt=ev.excerpt,
-                        observed_at=ev.observed_at,
-                        confidence=ev.confidence,
-                    )
-                ],
-                audit=None,
-                has_draft=False,
+            created_leads.append(
+                LeadOut(
+                    id=lead.id,
+                    campaign_id=lead.campaign_id,
+                    company_name=company.name,
+                    domain=company.domain,
+                    website_url=company.website_url,
+                    country=company.country,
+                    industry=company.industry,
+                    contact_name=contact.full_name,
+                    contact_title=contact.title,
+                    business_email=contact.business_email,
+                    email_status=contact.email_status,
+                    opportunity_type=lead.opportunity_type,
+                    fit_score=lead.fit_score,
+                    status=lead.status,
+                    source_provider=contact.source_provider,
+                    created_at=lead.created_at,
+                    evidence=[
+                        EvidenceOut(
+                            id=ev.id,
+                            lead_id=lead.id,
+                            company_id=company.id,
+                            source_url=ev.source_url,
+                            evidence_type=ev.evidence_type,
+                            excerpt=ev.excerpt,
+                            observed_at=ev.observed_at,
+                            confidence=ev.confidence,
+                        )
+                    ],
+                    audit=None,
+                    has_draft=False,
+                )
             )
-        )
+
+        page += 1
+
+    if not created_leads:
+        if skipped_already_contacted > 0 or skipped_already_in_campaign > 0:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"0 new leads added: {skipped_already_contacted} matching companies from Apollo were already contacted in previous campaigns, "
+                    f"and {skipped_already_in_campaign} are already added to this campaign. "
+                    "Try a broader search query or a different industry to find fresh prospects."
+                )
+            )
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    f"No prospective companies found for query '{payload.query}' in '{payload.market}'. "
+                    "Try using broader industry terms (e.g. 'saas', 'fintech', 'logistics') or selecting 'Global' region."
+                )
+            )
 
     db.commit()
     return created_leads

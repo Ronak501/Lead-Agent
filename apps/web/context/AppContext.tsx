@@ -464,7 +464,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         throw new Error(err.detail || 'Lead discovery failed');
       }
       const newLeads = await res.json();
-      notify(`Discovered and qualified ${newLeads.length} new prospective leads with source evidence!`);
+      if (newLeads && newLeads.length > 0) {
+        notify(`Discovered and qualified ${newLeads.length} new prospective leads with source evidence!`, 'success');
+      } else {
+        notify('0 new leads found. All matching candidates have already been contacted or added. Try a broader search.', 'info');
+      }
       await fetchData();
       return true;
     } catch (err: any) {

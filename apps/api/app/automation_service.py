@@ -229,107 +229,122 @@ class AutomationEngine:
 
     @classmethod
     async def discover_leads_for_campaign(cls, campaign: Campaign, db: Session, limit: int = 5) -> List[Lead]:
-        """Auto-discovers, verifies, and records real prospective leads for an active campaign."""
-        query = f"{campaign.company_type} in {campaign.target_city} {campaign.target_country}"
+        """Auto-discovers, verifies, and records real prospective leads for an active campaign with multi-page resilience."""
+        query = campaign.company_type or (campaign.industries[0] if campaign.industries else "Technology")
         service_target = campaign.services[0] if campaign.services else "Website redesign"
         market = campaign.target_country or "India"
+        if campaign.target_city and campaign.target_city.lower() not in ("all", "global"):
+            market = f"{campaign.target_city}, {market}"
 
-        try:
-            results = await discovery_provider.search(
-                query=query,
-                market=market,
-                industry=campaign.industries[0] if campaign.industries else "Technology",
-                service_target=service_target,
-                limit=limit,
-            )
-        except (ApiRateLimitException, ApiAuthenticationException, ProviderNotConfiguredException) as exc:
-            logger.error(f"Lead discovery provider error for campaign '{campaign.name}': {exc}")
-            db.add(
-                AuditLog(
-                    workspace_id=campaign.workspace_id,
-                    user_email=settings.SENDER_EMAIL or "founder@ornitech.in",
-                    action="discovery_error",
-                    entity_type="campaign",
-                    entity_id=campaign.id,
-                    details=f"Discovery Error: {str(exc)}",
+        created_leads: List[Lead] = []
+        skipped_already_contacted = 0
+        skipped_already_in_campaign = 0
+        page = 1
+        max_pages = 3
+        batch_size = max(15, limit * 3)
+
+        while len(created_leads) < limit and page <= max_pages:
+            try:
+                results = await discovery_provider.search(
+                    query=query,
+                    market=market,
+                    industry=campaign.industries[0] if campaign.industries else "Technology",
+                    service_target=service_target,
+                    limit=batch_size,
+                    page=page,
                 )
-            )
-            db.commit()
-            raise exc
-        except Exception as exc:
-            logger.error(f"Unexpected discovery error for campaign '{campaign.name}': {exc}")
-            results = []
+            except (ApiRateLimitException, ApiAuthenticationException, ProviderNotConfiguredException) as exc:
+                logger.error(f"Lead discovery provider error for campaign '{campaign.name}': {exc}")
+                db.add(
+                    AuditLog(
+                        workspace_id=campaign.workspace_id,
+                        user_email=settings.SENDER_EMAIL or "founder@ornitech.in",
+                        action="discovery_error",
+                        entity_type="campaign",
+                        entity_id=campaign.id,
+                        details=f"Discovery Error: {str(exc)}",
+                    )
+                )
+                db.commit()
+                raise exc
+            except Exception as exc:
+                logger.error(f"Unexpected discovery error for campaign '{campaign.name}': {exc}")
+                results = []
 
-        if not results:
-            logger.info(f"Discovery search returned 0 matching prospects for query '{query}' in {market}.")
-            return []
+            if not results:
+                break
 
-        created_leads = []
-        for item in results:
-            domain = normalize_domain(item.get("domain"))
-            if not domain:
-                continue
+            for item in results:
+                if len(created_leads) >= limit:
+                    break
 
-            contact_name = item.get("contact_name") or "Founder / Decision Maker"
-            first_name = contact_name.split()[0].lower() if contact_name else "founder"
-            contact_email = normalize_email(
-                item.get("business_email") or item.get("contact_email") or f"{first_name}@{domain}"
-            )
+                domain = normalize_domain(item.get("domain"))
+                if not domain:
+                    continue
 
-            # Strict Anti-Spam Check: Never re-discover or contact the same startup or founder again!
-            already_contacted, reason = is_target_already_contacted(
-                db=db,
-                workspace_id=campaign.workspace_id,
-                domain=domain,
-                email=contact_email,
-            )
-            if already_contacted:
-                logger.info(f"🚫 Anti-Spam Guard: Skipping previously contacted target: {reason}")
-                continue
+                contact_name = item.get("contact_name") or "Founder / Decision Maker"
+                first_name = contact_name.split()[0].lower() if contact_name else "founder"
+                contact_email = normalize_email(
+                    item.get("business_email") or item.get("contact_email") or f"{first_name}@{domain}"
+                )
 
-            # Upsert company
-            company = db.query(Company).filter_by(
-                workspace_id=campaign.workspace_id,
-                domain=domain,
-            ).first()
-
-            if not company:
-                company = Company(
+                # Strict Anti-Spam Check: Never re-discover or contact the same startup or founder again!
+                already_contacted, reason = is_target_already_contacted(
+                    db=db,
                     workspace_id=campaign.workspace_id,
-                    name=item.get("company_name") or item.get("name") or domain.split(".")[0].title(),
                     domain=domain,
-                    website_url=item.get("website_url") or item.get("url") or f"https://{domain}",
-                    country=campaign.target_country,
-                    industry=item.get("industry") or "Technology",
-                    description=item.get("description") or f"Prospect in {campaign.target_city}, {campaign.target_country}",
+                    email=contact_email,
                 )
-                db.add(company)
-                db.flush()
+                if already_contacted:
+                    skipped_already_contacted += 1
+                    logger.info(f"🚫 Anti-Spam Guard: Skipping previously contacted target: {reason}")
+                    continue
 
-            # Find or create contact with verified email
-            contact = db.query(Contact).filter_by(
-                company_id=company.id,
-                business_email=contact_email,
-            ).first()
+                # Upsert company
+                company = db.query(Company).filter_by(
+                    workspace_id=campaign.workspace_id,
+                    domain=domain,
+                ).first()
 
-            if not contact:
-                contact = Contact(
+                if not company:
+                    company = Company(
+                        workspace_id=campaign.workspace_id,
+                        name=item.get("company_name") or item.get("name") or domain.split(".")[0].title(),
+                        domain=domain,
+                        website_url=item.get("website_url") or item.get("url") or f"https://{domain}",
+                        country=campaign.target_country,
+                        industry=item.get("industry") or "Technology",
+                        description=item.get("description") or f"Prospect in {campaign.target_city}, {campaign.target_country}",
+                    )
+                    db.add(company)
+                    db.flush()
+
+                # Check if this company is already a lead in this campaign
+                existing_lead = db.query(Lead).filter_by(
+                    campaign_id=campaign.id,
                     company_id=company.id,
-                    full_name=contact_name,
-                    title=item.get("contact_title") or "Founder / Decision Maker",
+                ).first()
+                if existing_lead:
+                    skipped_already_in_campaign += 1
+                    continue
+
+                # Find or create contact with verified email
+                contact = db.query(Contact).filter_by(
+                    company_id=company.id,
                     business_email=contact_email,
-                    email_status="verified",
-                )
-                db.add(contact)
-                db.flush()
+                ).first()
 
-            # Create lead
-            existing_lead = db.query(Lead).filter_by(
-                campaign_id=campaign.id,
-                company_id=company.id,
-            ).first()
+                if not contact:
+                    contact = Contact(
+                        company_id=company.id,
+                        full_name=contact_name,
+                        title=item.get("contact_title") or "Founder / Decision Maker",
+                        business_email=contact_email,
+                        email_status="verified",
+                    )
+                    db.add(contact)
+                    db.flush()
 
-            if not existing_lead:
                 lead = Lead(
                     campaign_id=campaign.id,
                     company_id=company.id,
@@ -364,6 +379,25 @@ class AutomationEngine:
                     details=json.dumps({"company": company.name, "domain": domain, "founder_email": contact_email}),
                 )
                 db.add(audit_log)
+
+            page += 1
+
+        if not created_leads:
+            reason_msg = (
+                f"Discovery for campaign '{campaign.name}' found 0 new prospects for '{query}' in {market}. "
+                f"({skipped_already_contacted} previously contacted, {skipped_already_in_campaign} already in campaign)."
+            )
+            logger.info(reason_msg)
+            db.add(
+                AuditLog(
+                    workspace_id=campaign.workspace_id,
+                    user_email=settings.SENDER_EMAIL or "founder@ornitech.in",
+                    action="discovery_zero_leads",
+                    entity_type="campaign",
+                    entity_id=campaign.id,
+                    details=reason_msg,
+                )
+            )
 
         db.commit()
         return created_leads
