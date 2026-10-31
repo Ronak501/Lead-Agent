@@ -98,8 +98,9 @@ class SafeEmailSender:
                 msg["To"] = to_email
 
                 # Modern deliverability headers
-                unsub_url = f"http://localhost:8000/api/tracking/unsubscribe?email={to_email}"
-                track_url = f"http://localhost:8000/api/tracking/open/{draft_id}.png"
+                base_url = (getattr(settings, "PUBLIC_API_URL", None) or "http://localhost:8000").rstrip("/")
+                unsub_url = f"{base_url}/api/tracking/unsubscribe?email={to_email}"
+                track_url = f"{base_url}/api/tracking/open/{draft_id}.png"
                 msg["List-Unsubscribe"] = f"<{unsub_url}>"
                 msg["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
 

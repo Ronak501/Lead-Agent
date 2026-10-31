@@ -8,7 +8,7 @@ import smtplib
 import imaplib
 from typing import Optional
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status, BackgroundTasks, Request
 from fastapi.responses import HTMLResponse
 
 logger = logging.getLogger("leadpilot.routes")
@@ -97,7 +97,28 @@ from .automation_service import (
 )
 from .seed import seed_database
 
-router = APIRouter(prefix="/api")
+async def require_api_user(request: Request, current_user: User = Depends(get_current_user)):
+    """Protect API operations while leaving authentication and public email callbacks reachable."""
+    path = request.url.path.rstrip("/")
+    public_paths = (
+        "/api/auth/",
+        "/api/unsubscribe",
+        "/api/track/open",
+        "/api/integrations/gmail/oauth/callback",
+    )
+    if any(path.startswith(prefix) for prefix in public_paths):
+        return None
+    if current_user is None:
+        raise HTTPException(status_code=401, detail="Authentication is required.")
+    if not any(
+        membership.workspace_id == settings.DEFAULT_WORKSPACE_ID
+        for membership in current_user.memberships
+    ):
+        raise HTTPException(status_code=403, detail="You do not belong to this workspace.")
+    return current_user
+
+
+router = APIRouter(prefix="/api", dependencies=[Depends(require_api_user)])
 
 discovery_provider = CompanyDiscoveryProvider()
 verification_provider = EmailVerificationProvider()

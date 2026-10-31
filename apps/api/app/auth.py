@@ -23,9 +23,9 @@ JWT_ALGORITHM = "HS256"
 
 
 def hash_password(password: str) -> str:
-    """Hashes a password with PBKDF2-HMAC-SHA256 and 100,000 rounds with random salt."""
+    """Hashes a password with PBKDF2-HMAC-SHA256 and a random salt."""
     salt = secrets.token_hex(16)
-    key = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt), 100000)
+    key = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt), 310000)
     return f"{salt}:{key.hex()}"
 
 
@@ -37,7 +37,7 @@ def verify_password(stored_password_hash: Optional[str], provided_password: Opti
         if ":" not in stored_password_hash:
             return False
         salt, key_hex = stored_password_hash.split(":", 1)
-        new_key = hashlib.pbkdf2_hmac("sha256", provided_password.encode("utf-8"), bytes.fromhex(salt), 100000)
+        new_key = hashlib.pbkdf2_hmac("sha256", provided_password.encode("utf-8"), bytes.fromhex(salt), 310000)
         return secrets.compare_digest(new_key.hex(), key_hex)
     except Exception:
         return False
@@ -50,9 +50,18 @@ def is_authorized_email(email: str, hosted_domain: str = "") -> bool:
     
     if email_clean in whitelisted:
         return True
-    if email_clean.endswith(f"@{allowed_domain}") or hosted_domain.lower() == allowed_domain:
+    if email_clean.endswith(f"@{allowed_domain}"):
         return True
     return False
+
+
+def is_admin_email(email: str) -> bool:
+    email_clean = (email or "").strip().lower()
+    return email_clean in {
+        value.strip().lower()
+        for value in settings.ADMIN_WHITELIST_EMAILS.split(",")
+        if value.strip()
+    }
 
 
 def verify_google_credential(credential_token: str, db: Session) -> dict:
@@ -103,7 +112,7 @@ def verify_google_credential(credential_token: str, db: Session) -> dict:
                 member = WorkspaceMember(
                     workspace_id=ws.id,
                     user_id=user.id,
-                    role="admin" if ("founder" in email or "admin" in email or email in settings.ADMIN_WHITELIST_EMAILS) else "member",
+                    role="admin" if is_admin_email(email) else "member",
                 )
                 db.add(member)
         else:
@@ -120,7 +129,7 @@ def verify_google_credential(credential_token: str, db: Session) -> dict:
             "picture": picture,
             "exp": datetime.now(timezone.utc) + timedelta(days=7),
             "domain": allowed_domain,
-            "is_admin": True if (email in settings.ADMIN_WHITELIST_EMAILS or "founder" in email) else False,
+            "is_admin": is_admin_email(email),
         }
         token = jwt.encode(payload, settings.JWT_SECRET, algorithm=JWT_ALGORITHM)
 
@@ -178,7 +187,7 @@ def verify_ornitech_email_login(email: str, name: Optional[str], db: Session, pa
 
     valid_password = False
     if user and user.hashed_password:
-        if verify_password(user.hashed_password, password) or (default_admin_pass and password == default_admin_pass):
+        if verify_password(user.hashed_password, password):
             valid_password = True
     else:
         # First-time user initialization or unhashed admin login requires master admin password
@@ -208,7 +217,7 @@ def verify_ornitech_email_login(email: str, name: Optional[str], db: Session, pa
             member = WorkspaceMember(
                 workspace_id=ws.id,
                 user_id=user.id,
-                role="admin" if ("founder" in email_clean or "admin" in email_clean or email_clean in settings.ADMIN_WHITELIST_EMAILS) else "member",
+                role="admin" if is_admin_email(email_clean) else "member",
             )
             db.add(member)
         db.commit()
@@ -223,7 +232,7 @@ def verify_ornitech_email_login(email: str, name: Optional[str], db: Session, pa
         "full_name": user.full_name,
         "exp": datetime.now(timezone.utc) + timedelta(days=7),
         "domain": allowed_domain,
-        "is_admin": True if (email_clean in settings.ADMIN_WHITELIST_EMAILS or "founder" in email_clean) else False,
+        "is_admin": is_admin_email(email_clean),
     }
     token = jwt.encode(payload, settings.JWT_SECRET, algorithm=JWT_ALGORITHM)
 
@@ -262,6 +271,8 @@ def get_current_user(
             )
 
         user = db.query(User).filter_by(id=payload.get("sub")).first()
+        if not user or not user.is_active:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User account is inactive or unavailable.")
         return user
     except jwt.ExpiredSignatureError:
         raise HTTPException(

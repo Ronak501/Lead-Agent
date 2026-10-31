@@ -52,6 +52,8 @@ try:
         pass
     logger.info("Successfully connected to Neon PostgreSQL database!")
 except Exception as e:
+    if settings.APP_ENV.lower() == "production":
+        raise RuntimeError("Could not connect to configured production database; refusing SQLite fallback.") from e
     logger.warning(f"Could not connect to configured DATABASE_URL: {e}. Falling back to SQLite local db.")
     db_url = "sqlite:///./leadpilot.db"
     engine = create_engine(db_url, connect_args={"check_same_thread": False})

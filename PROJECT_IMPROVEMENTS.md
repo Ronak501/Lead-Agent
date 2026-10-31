@@ -58,11 +58,43 @@ This document specifies the technical audit, architectural improvements, and cod
 ---
 
 ## 3. Implementation Verification Checklist
-- [x] `GROQ_MODEL=llama-3.3-70b-versatile` set in `apps/api/.env` and `.env`
+- [x] `GROQ_MODEL=llama-3.3-70b-versatile` set in `apps/api/.env`, `.env`, and `config.py`
 - [x] Candidate models updated in `apps/api/app/providers/ai_drafter.py`
 - [x] Candidate models updated in `apps/api/app/routes.py` (`auto_profile_domain`)
 - [x] `database_engine` exposed in `ApiStatus` and `/health` endpoint in `apps/api/app/main.py`
 - [x] Neon Cloud live badge rendered in `OverviewView.tsx`
 - [x] `apps/api/app/database.py` configured with clean serverless pooling
-- [x] Safe exception handling in `automation_service.py`
+- [x] Safe exception handling and per-lead rollback in `automation_service.py`
+- [x] Dynamic `PUBLIC_API_URL` tracking and one-click unsubscribe headers in `safe_outreach.py`
+
+---
+
+## 4. Next Strategic Recommendations & Production Roadmap
+
+The following high-value enhancements represent the logical next steps to scale LeadPilot AI into an enterprise-grade outbound engine:
+
+### 4.1 Autonomous Multi-Touch Follow-Up Cadence (Day 3 Bump & Day 7 Breakup)
+- **Current State**: Initial cold pitches are dispatched automatically, but follow-ups currently require manual initiation from the UI. In B2B sales outreach, over 70% of positive replies occur on Step 2 or Step 3.
+- **Recommended Solution**:
+  - Add an automated sequence runner to `AutomationEngine.run_full_cycle`:
+    - Checks sent leads where `draft.sent_at <= now - 3 days` with no reply and no suppression.
+    - Automatically composes and dispatches Step 1 Follow-up ("Quick conversational bump on my note below..."), preserving the subject thread (`Re: ...`).
+    - After 7 days of no reply, dispatches Step 2 Breakup note ("Assuming this isn't a priority right now...").
+
+### 4.2 Pre-Send Deliverability & Spam Keyword Linter
+- **Current State**: Groq LPU composes compelling copy, but drafts are not pre-screened against email service provider (ESP) spam trigger dictionaries.
+- **Recommended Solution**:
+  - Add a pre-send spam keyword scanner in `SafeEmailSender` flagging phrases such as `"100% free"`, `"guarantee"`, `"risk-free"`, or excessive capitalization.
+  - Automatically sanitizes high-risk phrases before dispatch to maintain a 99%+ sender reputation score for `founder@ornitech.in`.
+
+### 4.3 Campaign Auto-Pause on High Bounce Rate (Circuit Breaker)
+- **Current State**: Single bounces are suppressed, but if a campaign targets outdated domains and exceeds a 5% bounce rate, the campaign continues running.
+- **Recommended Solution**:
+  - Implement an automated circuit breaker: if any campaign records > 5% bounce rate over 20+ sends, immediately auto-pause the campaign, log an alert, and notify `founder@ornitech.in`.
+
+### 4.4 Automated Warmup Schedule Ramping
+- **Current State**: Sending limit is currently capped statically at 50 or 100 emails per day.
+- **Recommended Solution**:
+  - Implement a warmup ramp: Week 1 (15 sends/day), Week 2 (30 sends/day), Week 3 (50 sends/day), Week 4+ (100 sends/day) to safely build sender domain reputation with Gmail and Outlook.
+
 

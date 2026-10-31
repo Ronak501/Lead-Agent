@@ -1,21 +1,15 @@
 # Security Policy
 
-## Supported Versions
+## Supported versions
 
-Use this section to tell people about which versions of your project are
-currently being supported with security updates.
+Security fixes are provided for the current deployed version of LeadPilot AI.
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 5.1.x   | :white_check_mark: |
-| 5.0.x   | :x:                |
-| 4.0.x   | :white_check_mark: |
-| < 4.0   | :x:                |
+## Reporting a vulnerability
 
-## Reporting a Vulnerability
+Report suspected vulnerabilities privately to the Ornitech Solutions system owner. Include the affected component, steps to reproduce, and any relevant logs with secrets and personal data removed.
 
-Use this section to tell people how to report a vulnerability.
+Please do not publish exploit details or customer data while a report is being investigated. The maintainer will acknowledge the report and coordinate a fix and disclosure timeline with the reporter.
 
-Tell them where to go, how often they can expect to get an update on a
-reported vulnerability, what to expect if the vulnerability is accepted or
-declined, etc.
+## Handling credentials
+
+Do not commit API keys, database URLs, SMTP credentials, JWT secrets, or customer data. Rotate any credential that may have been exposed and report the exposure through the private channel above.

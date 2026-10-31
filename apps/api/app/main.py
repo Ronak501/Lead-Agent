@@ -3,6 +3,7 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from .config import settings
 from .database import engine, Base, SessionLocal
@@ -48,6 +49,19 @@ async def periodic_automation_loop():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if settings.APP_ENV.lower() == "production":
+        missing = [
+            name for name, value in (
+                ("DATABASE_URL", settings.DATABASE_URL),
+                ("JWT_SECRET", settings.JWT_SECRET),
+                ("ADMIN_PASSWORD", settings.ADMIN_PASSWORD),
+            )
+            if not value
+        ]
+        if missing:
+            raise RuntimeError(f"Required production secrets/configuration are missing: {', '.join(missing)}")
+        if len(settings.JWT_SECRET) < 32:
+            raise RuntimeError("JWT_SECRET must contain at least 32 characters in production.")
     # Auto-create tables on startup
     Base.metadata.create_all(bind=engine)
     # Seed default workspace and sample verified data if empty
@@ -59,8 +73,10 @@ async def lifespan(app: FastAPI):
 
     # Start autonomous worker if enabled
     worker_task = None
-    if settings.AUTOPILOT_AUTO_RUN:
+    if settings.AUTOPILOT_AUTO_RUN and settings.APP_ENV.lower() != "production":
         worker_task = asyncio.create_task(periodic_automation_loop())
+    elif settings.AUTOPILOT_AUTO_RUN:
+        logger.warning("Autopilot is enabled in production but is not started inside the API process. Run it as a single dedicated worker.")
 
     yield
 
@@ -116,14 +132,21 @@ def root():
 @app.get("/health", response_model=ApiStatus)
 async def health():
     db_url = settings.DATABASE_URL or ""
-    is_neon = "neon.tech" in db_url or "-pooler" in db_url
-    engine_name = "neon_serverless_postgres (AWS us-east-2)" if is_neon else "postgresql"
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+        database_status = "connected"
+    except Exception:
+        database_status = "unavailable"
+    engine_name = engine.dialect.name
+    if "neon.tech" in db_url:
+        engine_name = f"neon_serverless_{engine_name}"
     return ApiStatus(
-        status="ok",
+        status="ok" if database_status == "connected" else "degraded",
         app="LeadPilot AI API",
         version="1.0.0",
         environment=settings.APP_ENV,
-        database="connected",
+        database=database_status,
         database_engine=engine_name,
         email_sending_enabled=settings.EMAIL_SENDING_ENABLED,
         notes=[
