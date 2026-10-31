@@ -115,12 +115,16 @@ def root():
 
 @app.get("/health", response_model=ApiStatus)
 async def health():
+    db_url = settings.DATABASE_URL or ""
+    is_neon = "neon.tech" in db_url or "-pooler" in db_url
+    engine_name = "neon_serverless_postgres (AWS us-east-2)" if is_neon else "postgresql"
     return ApiStatus(
         status="ok",
         app="LeadPilot AI API",
         version="1.0.0",
         environment=settings.APP_ENV,
         database="connected",
+        database_engine=engine_name,
         email_sending_enabled=settings.EMAIL_SENDING_ENABLED,
         notes=[
             "Strict evidence grounding active",

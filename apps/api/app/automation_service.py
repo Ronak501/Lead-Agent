@@ -670,14 +670,23 @@ class AutomationEngine:
         sent_count = 0
         failures = []
         for lead in qualified_leads:
-            success, reason = await cls.dispatch_single_lead(lead, db)
-            if success:
-                sent_count += 1
-            else:
+            try:
+                success, reason = await cls.dispatch_single_lead(lead, db)
+                if success:
+                    sent_count += 1
+                else:
+                    failures.append({
+                        "lead_id": lead.id,
+                        "company": lead.company.name if lead.company else "Unknown",
+                        "error": reason,
+                    })
+            except Exception as single_err:
+                db.rollback()
+                logger.error(f"Error dispatching lead {lead.id}: {single_err}")
                 failures.append({
                     "lead_id": lead.id,
                     "company": lead.company.name if lead.company else "Unknown",
-                    "error": reason,
+                    "error": str(single_err),
                 })
 
         return sent_count, failures

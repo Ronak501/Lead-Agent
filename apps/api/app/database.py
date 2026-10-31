@@ -41,9 +41,9 @@ else:
         engine_kwargs["pool_size"] = 25
         engine_kwargs["max_overflow"] = 50
         engine_kwargs["pool_timeout"] = 30
+        engine_kwargs["pool_recycle"] = 300    # Recycles idle connections every 5 mins
 
     engine_kwargs["pool_pre_ping"] = True  # Verifies connection liveness on checkout
-    engine_kwargs["pool_recycle"] = 300    # Recycles idle connections every 5 mins
 
 try:
     engine = create_engine(db_url, **engine_kwargs)

@@ -20,6 +20,7 @@ interface AppContextType {
   setCurrentUser: (user: UserSession | null) => void;
   signOut: () => void;
   apiStatus: 'checking' | 'online' | 'offline';
+  databaseEngine: string | null;
   loading: boolean;
   setLoading: (l: boolean) => void;
   notification: { type: 'success' | 'error' | 'info'; message: string } | null;
@@ -64,6 +65,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<UserSession | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [apiStatus, setApiStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+  const [databaseEngine, setDatabaseEngine] = useState<string | null>('neon_serverless_postgres (AWS us-east-2)');
   const [loading, setLoading] = useState(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
 
@@ -167,6 +169,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       if (hRes && hRes.ok) {
         setApiStatus('online');
+        try {
+          const hData = await hRes.json();
+          if (hData?.database_engine) {
+            setDatabaseEngine(hData.database_engine);
+          }
+        } catch {
+          // ignore json parse error
+        }
       } else {
         setApiStatus('offline');
       }
@@ -626,6 +636,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setCurrentUser,
         signOut,
         apiStatus,
+        databaseEngine,
         loading,
         setLoading,
         notification,

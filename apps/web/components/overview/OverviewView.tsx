@@ -51,6 +51,7 @@ export function OverviewView({ onOpenDiscoverModal, onOpenNewCampaignModal }: Ov
     fetchAgentActivities,
     loading,
     handleRunAutonomousPipeline,
+    databaseEngine,
   } = useApp();
 
   const pendingReviewCount = drafts.filter((d) => d.status === 'pending_review').length;
@@ -69,8 +70,14 @@ export function OverviewView({ onOpenDiscoverModal, onOpenNewCampaignModal }: Ov
             <span className="relative inline-flex rounded-full h-3 w-3 bg-[#35422d]"></span>
           </span>
           <div>
-            <span className="font-semibold text-[#29251d]">Autonomous Prospecting Engine: Active</span>
-            <span className="text-[#443b2f] ml-2 hidden md:inline">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-semibold text-[#29251d]">Autonomous Prospecting Engine: Active</span>
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#35422d]/10 text-[#35422d] font-semibold text-[11px] border border-[#35422d]/25">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#35422d]"></span>
+                Neon Serverless DB (Live AWS us-east-2)
+              </span>
+            </div>
+            <span className="text-[#443b2f] mt-0.5 block text-[11px]">
               Running every 15 mins &bull; Live SMTP: <strong className="text-[#29251d]">founder@ornitech.in</strong> &bull; Anti-Spam De-duplication Active
             </span>
           </div>

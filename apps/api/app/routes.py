@@ -216,13 +216,19 @@ Respond ONLY with a valid JSON object matching this schema:
 }}
 """
     headers = {"Authorization": f"Bearer {settings.GROQ_API_KEY}", "Content-Type": "application/json"}
-    candidate_models = ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "qwen/qwen3.8-27b"]
+    preferred_model = settings.GROQ_MODEL or "llama-3.3-70b-versatile"
+    candidate_models = [preferred_model, "llama-3.3-70b-versatile", "llama-3.1-70b-versatile", "llama3-70b-8192", "mixtral-8x7b-32768"]
+    # Deduplicate preserving order
+    unique_candidates = []
+    for m in candidate_models:
+        if m and m not in unique_candidates:
+            unique_candidates.append(m)
     profile = None
     last_err = None
 
     try:
         async with httpx.AsyncClient(timeout=14.0) as client:
-            for model_candidate in candidate_models:
+            for model_candidate in unique_candidates:
                 body = {
                     "model": model_candidate,
                     "messages": [

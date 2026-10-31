@@ -278,6 +278,7 @@ class ApiStatus(BaseModel):
     version: str
     environment: str
     database: str
+    database_engine: Optional[str] = "neon_serverless_postgres"
     email_sending_enabled: bool
     notes: list[str] = Field(default_factory=list)
 
