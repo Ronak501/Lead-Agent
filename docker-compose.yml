@@ -33,10 +33,12 @@ services:
     container_name: leadpilot-api
     restart: unless-stopped
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    env_file:
+      - .env
     environment:
       - PORT=8000
       - APP_ENV=development
-      - DATABASE_URL=postgresql+psycopg://leadpilot:leadpilot@postgres:5432/leadpilot
+      - DATABASE_URL=${DATABASE_URL:-postgresql://neondb_owner:npg_gW4XmLkyi7dE@ep-curly-term-b5ci0so6-pooler.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require}
       - REDIS_URL=redis://redis:6379/0
       - GROQ_API_KEY=${GROQ_API_KEY:-}
       - GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}
@@ -66,8 +68,6 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_started
     volumes:
