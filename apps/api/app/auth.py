@@ -162,7 +162,13 @@ def verify_google_credential(credential_token: str, db: Session) -> dict:
         )
 
 
-def verify_ornitech_email_login(email: str, name: Optional[str], db: Session, password: Optional[str] = None) -> dict:
+def verify_ornitech_email_login(
+    email: str,
+    name: Optional[str],
+    db: Session,
+    password: Optional[str] = None,
+    access_key: Optional[str] = None,
+) -> dict:
     """
     Direct login requiring authorized email (@ornitech.in or admin whitelist) and password verification.
     """
@@ -171,6 +177,22 @@ def verify_ornitech_email_login(email: str, name: Optional[str], db: Session, pa
 
     if not is_authorized_email(email_clean):
         logger.warning(f"Rejected sign-in attempt for unauthorized email: {email_clean}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password.",
+        )
+
+    configured_access_key = (settings.ORNITECH_LOGIN_ACCESS_KEY or "").strip()
+    if not configured_access_key:
+        logger.error("ORNITECH_LOGIN_ACCESS_KEY is not configured; rejecting password login attempt.")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Password login is temporarily unavailable.",
+        )
+
+    provided_access_key = (access_key or "").strip()
+    if not provided_access_key or not secrets.compare_digest(provided_access_key, configured_access_key):
+        logger.warning(f"Failed access key validation for {email_clean}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password.",
@@ -284,4 +306,3 @@ def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication session token.",
         )
-

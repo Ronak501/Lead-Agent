@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     ALLOWED_OAUTH_DOMAIN: str = "ornitech.in"
     ADMIN_WHITELIST_EMAILS: str = "ronaktalaviya51@gmail.com"
     ADMIN_PASSWORD: str = "Ornitech@2026"
+    ORNITECH_LOGIN_ACCESS_KEY: str = ""
     JWT_SECRET: str = "ornitech-lead-agent-secret-key-change-in-prod"
     ADMIN_NOTIFICATION_EMAIL: str = "founder@ornitech.in"
     SMTP_HOST: str = "smtp.gmail.com"

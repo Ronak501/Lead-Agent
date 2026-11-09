@@ -313,7 +313,7 @@ class OrnitechLoginRequest(BaseModel):
     email: str = Field(description="Must be an @ornitech.in email address")
     password: Optional[str] = None
     full_name: Optional[str] = None
-    access_key: Optional[str] = None
+    access_key: Optional[str] = Field(default=None, description="Server-side shared secret required for password login")
 
 
 class AutomationRunResponse(BaseModel):
@@ -389,7 +389,6 @@ class AgentActivityFeedResponse(BaseModel):
     interval_minutes: int
     last_run_at: Optional[datetime] = None
     activities: list[AgentActivityItem]
-
 
 
 
