@@ -2603,7 +2603,13 @@ def verify_google_oauth(payload: GoogleAuthVerifyRequest, db: Session = Depends(
 @router.post("/auth/ornitech/login", response_model=GoogleAuthVerifyResponse)
 def login_ornitech(payload: OrnitechLoginRequest, db: Session = Depends(get_db)):
     """Direct login for team members strictly enforcing @ornitech.in domain and password verification."""
-    return verify_ornitech_email_login(payload.email, payload.full_name, db, payload.password)
+    return verify_ornitech_email_login(
+        payload.email,
+        payload.full_name,
+        db,
+        payload.password,
+        payload.access_key,
+    )
 
 
 @router.get("/auth/me")
@@ -2829,6 +2835,5 @@ def get_daily_sending_pace(db: Session = Depends(get_db)):
         "sender_email": settings.SENDER_EMAIL or "founder@ornitech.in",
         "status": "safe" if sent_today < limit else "daily_limit_reached",
     }
-
 
 

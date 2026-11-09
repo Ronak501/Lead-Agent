@@ -323,44 +323,65 @@ def test_password_authentication_and_hashing(db_session):
     """Verify password hashing with PBKDF2 and secure login verification."""
     from fastapi import HTTPException
     from app.auth import hash_password, verify_password, verify_ornitech_email_login
+    from app.config import settings
 
-    # 1. Verify PBKDF2 hashing & verification
-    raw_pass = "SecurePass@2026"
-    hashed = hash_password(raw_pass)
-    assert hashed != raw_pass
-    assert ":" in hashed
-    assert verify_password(hashed, raw_pass) is True
-    assert verify_password(hashed, "WrongPass123") is False
+    original_access_key = settings.ORNITECH_LOGIN_ACCESS_KEY
+    settings.ORNITECH_LOGIN_ACCESS_KEY = "test-ornitech-access-key"
 
-    # 2. Login without password must be rejected (400)
-    with pytest.raises(HTTPException) as exc_info:
-        verify_ornitech_email_login(
-            email="ronaktalaviya51@gmail.com",
-            name="Ronak",
-            db=db_session,
-            password="",
+    try:
+        # 1. Verify PBKDF2 hashing & verification
+        raw_pass = "SecurePass@2026"
+        hashed = hash_password(raw_pass)
+        assert hashed != raw_pass
+        assert ":" in hashed
+        assert verify_password(hashed, raw_pass) is True
+        assert verify_password(hashed, "WrongPass123") is False
+
+        # 2. Login without access key must be rejected (401)
+        with pytest.raises(HTTPException) as exc_info:
+            verify_ornitech_email_login(
+                "ronaktalaviya51@gmail.com",
+                "Ronak",
+                db_session,
+                raw_pass,
+                access_key="",
+            )
+        assert exc_info.value.status_code == 401
+
+        # 3. Login without password must be rejected (400)
+        with pytest.raises(HTTPException) as exc_info2:
+            verify_ornitech_email_login(
+                email="ronaktalaviya51@gmail.com",
+                name="Ronak",
+                db=db_session,
+                password="",
+                access_key="test-ornitech-access-key",
+            )
+        assert exc_info2.value.status_code == 400
+
+        # 4. Login with wrong password must be rejected (401)
+        with pytest.raises(HTTPException) as exc_info3:
+            verify_ornitech_email_login(
+                "ronaktalaviya51@gmail.com",
+                "Ronak",
+                db_session,
+                "WrongPass123",
+                access_key="test-ornitech-access-key",
+            )
+        assert exc_info3.value.status_code == 401
+
+        # 5. Login with valid password and access key succeeds and issues JWT
+        result = verify_ornitech_email_login(
+            "ronaktalaviya51@gmail.com",
+            "Ronak",
+            db_session,
+            raw_pass,
+            access_key="test-ornitech-access-key",
         )
-    assert exc_info.value.status_code == 400
-
-    # 3. Login with wrong password must be rejected (401)
-    with pytest.raises(HTTPException) as exc_info2:
-        verify_ornitech_email_login(
-            email="ronaktalaviya51@gmail.com",
-            name="Ronak",
-            db=db_session,
-            password="WrongPassword123",
-        )
-    assert exc_info2.value.status_code == 401
-
-    # 4. Login with valid password succeeds and issues JWT
-    result = verify_ornitech_email_login(
-        email="ronaktalaviya51@gmail.com",
-        name="Ronak",
-        db=db_session,
-        password="Ornitech@2026",
-    )
-    assert "access_token" in result
-    assert result["user"]["email"] == "ronaktalaviya51@gmail.com"
+        assert "access_token" in result
+        assert result["user"]["email"] == "ronaktalaviya51@gmail.com"
+    finally:
+        settings.ORNITECH_LOGIN_ACCESS_KEY = original_access_key
 
 
 @pytest.mark.asyncio
@@ -513,5 +534,3 @@ async def test_followup_draft_generation(db_session):
     assert step2.subject == "Re: Idea for Fintech Scale's web presence"
     assert "won't follow up again" in step2.body_text.lower()
     assert step2.status == "pending_review"
-
-
