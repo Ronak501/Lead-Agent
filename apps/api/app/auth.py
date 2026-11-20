@@ -56,12 +56,14 @@ def is_authorized_email(email: str, hosted_domain: str = "") -> bool:
 
 
 def is_admin_email(email: str) -> bool:
+    """Strictly checks if email is in the explicit admin whitelist (no substring matching)."""
     email_clean = (email or "").strip().lower()
-    return email_clean in {
+    whitelisted = {
         value.strip().lower()
         for value in settings.ADMIN_WHITELIST_EMAILS.split(",")
         if value.strip()
     }
+    return email_clean in whitelisted
 
 
 def verify_google_credential(credential_token: str, db: Session) -> dict:
@@ -271,38 +273,63 @@ def verify_ornitech_email_login(
     }
 
 
-def get_current_user(
+def get_current_user_optional(
     credentials: Optional[HTTPAuthorizationCredentials] = Security(security),
     db: Session = Depends(get_db),
 ) -> Optional[User]:
     """
-    Validates JWT token and ensures requester belongs to @ornitech.in or is whitelisted admin.
+    Validates JWT token if present. Returns User if valid, otherwise None without raising.
     """
-    if not credentials:
+    if not credentials or not credentials.credentials:
         return None
 
-    token = credentials.credentials
     try:
-        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(credentials.credentials, settings.JWT_SECRET, algorithms=[JWT_ALGORITHM])
         email = payload.get("email", "")
 
         if not is_authorized_email(email):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access restricted to authorized users only",
-            )
+            return None
 
         user = db.query(User).filter_by(id=payload.get("sub")).first()
         if not user or not user.is_active:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User account is inactive or unavailable.")
+            return None
         return user
-    except jwt.ExpiredSignatureError:
+    except Exception:
+        return None
+
+
+def get_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Security(security),
+    db: Session = Depends(get_db),
+) -> User:
+    """
+    Validates JWT token and ensures requester belongs to @ornitech.in or is whitelisted admin.
+    Raises 401 if token is missing or invalid.
+    """
+    user = get_current_user_optional(credentials, db)
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Session has expired. Please sign in again.",
+            detail="Authentication required. Please provide a valid Bearer token.",
+            headers={"WWW-Authenticate": "Bearer"},
         )
-    except jwt.PyJWTError:
+    return user
+
+
+def require_admin_user(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> User:
+    """
+    Strict authorization dependency: verifies user has admin rights in database or admin whitelist.
+    """
+    if is_admin_email(current_user.email):
+        return current_user
+
+    member = db.query(WorkspaceMember).filter_by(user_id=current_user.id, role="admin").first()
+    if not member:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication session token.",
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Administrative privileges required.",
         )
+    return current_user

@@ -1,4 +1,5 @@
 from pathlib import Path
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _BASE_DIR = Path(__file__).resolve().parent.parent
@@ -30,10 +31,11 @@ class Settings(BaseSettings):
     SENDER_COMPANY: str = "Founder, Ornitech Solutions"
     SENDER_WEBSITE: str = "https://ornitech.in"
     ALLOWED_OAUTH_DOMAIN: str = "ornitech.in"
-    ADMIN_WHITELIST_EMAILS: str = "ronaktalaviya51@gmail.com"
+    ADMIN_WHITELIST_EMAILS: str = "ronaktalaviya51@gmail.com,founder@ornitech.in"
     ADMIN_PASSWORD: str = "Ornitech@2026"
     ORNITECH_LOGIN_ACCESS_KEY: str = ""
     JWT_SECRET: str = "ornitech-lead-agent-secret-key-change-in-prod"
+    WEBHOOK_SECRET: str = ""
     ADMIN_NOTIFICATION_EMAIL: str = "founder@ornitech.in"
     SMTP_HOST: str = "smtp.gmail.com"
     SMTP_PORT: int = 587
@@ -50,6 +52,19 @@ class Settings(BaseSettings):
     OUTREACH_STAGGER_DELAY_SECONDS: float = 2.0
     AUTO_REPLY_MEETING_LINK: bool = True
     CAL_BOOKING_URL: str = "https://cal.com/ornitech/intro"
+
+    @model_validator(mode="after")
+    def validate_production_secrets(self) -> "Settings":
+        if self.APP_ENV == "production":
+            if (
+                not self.JWT_SECRET
+                or len(self.JWT_SECRET) < 32
+                or self.JWT_SECRET == "ornitech-lead-agent-secret-key-change-in-prod"
+            ):
+                raise ValueError(
+                    "CRITICAL SECURITY CONFIGURATION ERROR: In production, JWT_SECRET must be set to a secure random string of at least 32 characters."
+                )
+        return self
 
 
 settings = Settings()

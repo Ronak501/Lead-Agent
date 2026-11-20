@@ -1,6 +1,10 @@
 import csv
+import hashlib
+import hmac
+from html import escape
 import io
 import logging
+import secrets
 from datetime import datetime, timezone
 import json
 import uuid
@@ -89,7 +93,7 @@ from .providers.verification import EmailVerificationProvider
 from .providers.website_analyzer import WebsiteAuditProvider
 from .providers.ai_drafter import EmailDraftProvider
 from .providers.safe_outreach import SafeEmailSender, SafetyViolation
-from .auth import verify_google_credential, verify_ornitech_email_login, get_current_user
+from .auth import verify_google_credential, verify_ornitech_email_login, get_current_user, get_current_user_optional
 from .automation_service import (
     AutomationEngine,
     send_reply_notification_email,
@@ -97,19 +101,25 @@ from .automation_service import (
 )
 from .seed import seed_database
 
-async def require_api_user(request: Request, current_user: User = Depends(get_current_user)):
+async def require_api_user(request: Request, current_user: Optional[User] = Depends(get_current_user_optional)):
     """Protect API operations while leaving authentication and public email callbacks reachable."""
     path = request.url.path.rstrip("/")
     public_paths = (
         "/api/auth/",
-        "/api/unsubscribe",
-        "/api/track/open",
+        "/api/tracking/unsubscribe",
+        "/api/tracking/open",
+        "/api/webhooks/email-events",
+        "/api/oauth/gmail",
         "/api/integrations/gmail/oauth/callback",
     )
     if any(path.startswith(prefix) for prefix in public_paths):
         return None
     if current_user is None:
-        raise HTTPException(status_code=401, detail="Authentication is required.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required. Please provide a valid Bearer token.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     if not any(
         membership.workspace_id == settings.DEFAULT_WORKSPACE_ID
         for membership in current_user.memberships
@@ -374,6 +384,16 @@ async def create_campaign(
     )
 
 
+def csv_safe(value: Any) -> str:
+    """Neutralizes formula injection prefixes (=, +, -, @, tab, CR) for safe spreadsheet export."""
+    if value is None:
+        return ""
+    text = str(value)
+    if text and text[0] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + text
+    return text
+
+
 @router.get("/leads/export/csv")
 def export_leads_csv(campaign_id: Optional[str] = None, db: Session = Depends(get_db)):
     """Exports discovered leads, company domains, verified contacts, and qualification scores to CSV."""
@@ -416,23 +436,23 @@ def export_leads_csv(campaign_id: Optional[str] = None, db: Session = Depends(ge
         audit = db.query(WebsiteAudit).filter_by(company_id=l.company_id).order_by(WebsiteAudit.checked_at.desc()).first()
 
         writer.writerow([
-            l.id,
-            company.name if company else "",
-            company.domain if company else "",
-            company.website_url if company else "",
-            company.country if company else "",
-            company.industry if company else "",
-            contact.full_name if contact else "",
-            contact.title if contact else "",
-            contact.business_email if contact else "",
-            contact.email_status if contact else "unknown",
-            l.fit_score,
-            l.opportunity_type,
-            l.status,
-            audit.performance_score if audit else "N/A",
-            ", ".join(audit.tech_stack) if audit else "",
-            "; ".join(audit.issues_found[:2]) if audit else "",
-            l.created_at.isoformat() if l.created_at else "",
+            csv_safe(l.id),
+            csv_safe(company.name if company else ""),
+            csv_safe(company.domain if company else ""),
+            csv_safe(company.website_url if company else ""),
+            csv_safe(company.country if company else ""),
+            csv_safe(company.industry if company else ""),
+            csv_safe(contact.full_name if contact else ""),
+            csv_safe(contact.title if contact else ""),
+            csv_safe(contact.business_email if contact else ""),
+            csv_safe(contact.email_status if contact else "unknown"),
+            csv_safe(l.fit_score),
+            csv_safe(l.opportunity_type),
+            csv_safe(l.status),
+            csv_safe(audit.performance_score if audit else "N/A"),
+            csv_safe(", ".join(audit.tech_stack) if audit else ""),
+            csv_safe("; ".join(audit.issues_found[:2]) if audit else ""),
+            csv_safe(l.created_at.isoformat() if l.created_at else ""),
         ])
 
     csv_data = output.getvalue()
@@ -2412,6 +2432,7 @@ def handle_unsubscribe(email: str = Query(...), db: Session = Depends(get_db)):
             db.add(supp)
             db.commit()
 
+    safe_email = escape(norm_email or "")
     return HTMLResponse(
         content=f"""<!DOCTYPE html>
 <html>
@@ -2476,7 +2497,7 @@ def handle_unsubscribe(email: str = Query(...), db: Session = Depends(get_db)):
   <div class="card">
     <div class="badge">Unsubscribed</div>
     <h1>You have been opted out</h1>
-    <p>Your email (<strong>{norm_email}</strong>) has been added to our suppression blocklist. You will not receive any further automated outreach from Ornitech Solutions.</p>
+    <p>Your email (<strong>{safe_email}</strong>) has been added to our suppression blocklist. You will not receive any further automated outreach from Ornitech Solutions.</p>
     <div class="footer">Ornitech Solutions (founder@ornitech.in)</div>
   </div>
 </body>
@@ -2494,13 +2515,38 @@ def trigger_seed(db: Session = Depends(get_db)):
 # ==================== WEBHOOKS & OAUTH ROUTES ====================
 
 @router.post("/webhooks/email-events", response_model=dict)
-def handle_email_event_webhook(payload: EmailEventWebhookPayload, db: Session = Depends(get_db)):
+async def handle_email_event_webhook(
+    payload: EmailEventWebhookPayload,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     """Processes incoming delivery events (delivered, opened, replied, bounced, opted_out).
-    Enforces automatic suppression on bounce or opt-out.
+    Enforces signature verification and automatic suppression on bounce or opt-out.
     """
+    if settings.WEBHOOK_SECRET:
+        secret_header = (
+            request.headers.get("X-Webhook-Secret")
+            or request.headers.get("X-Signature")
+            or request.headers.get("X-Webhook-Signature")
+            or ""
+        )
+        raw_body = await request.body()
+        expected_sig = hmac.new(settings.WEBHOOK_SECRET.encode(), raw_body, hashlib.sha256).hexdigest()
+        is_valid = (
+            secrets.compare_digest(secret_header, settings.WEBHOOK_SECRET)
+            or secrets.compare_digest(secret_header, expected_sig)
+        )
+        if not is_valid:
+            logger.warning("Rejected webhook event due to invalid signature or secret.")
+            raise HTTPException(status_code=401, detail="Invalid webhook signature or secret.")
+
     draft = db.query(EmailDraft).filter_by(id=payload.draft_id).first()
     if not draft:
         raise HTTPException(status_code=404, detail="Referenced draft not found.")
+
+    if draft.provider_message_id and payload.provider_message_id:
+        if not secrets.compare_digest(draft.provider_message_id, payload.provider_message_id):
+            raise HTTPException(status_code=400, detail="Mismatched provider_message_id for draft on record.")
 
     ws_id = get_current_workspace_id()
 

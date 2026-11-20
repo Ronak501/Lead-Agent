@@ -127,9 +127,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const authFetch = async (url: string, options: RequestInit = {}) => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('ornitech_token') : null;
+    const headers = new Headers(options.headers || {});
+    if (token && !headers.has('Authorization')) {
+      headers.set('Authorization', `Bearer ${token}`);
+    }
+    return fetch(url, { ...options, headers });
+  };
+
   const fetchAgentActivities = async () => {
     try {
-      const res = await fetch(`${API}/api/agent/activity-feed`);
+      const res = await authFetch(`${API}/api/agent/activity-feed`);
       if (res.ok) {
         const data = await res.json();
         setAgentActivities(data.activities || []);
@@ -143,7 +152,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const fetchDailyPace = async () => {
     try {
-      const res = await fetch(`${API}/api/deliverability/daily-pace`);
+      const res = await authFetch(`${API}/api/deliverability/daily-pace`);
       if (res.ok) {
         const data = await res.json();
         setDailyPace(data);
@@ -157,14 +166,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const [hRes, cRes, lRes, dRes, sRes, iRes, aRes, actRes, dpRes] = await Promise.all([
         fetch(`${API}/health`).catch(() => null),
-        fetch(`${API}/api/campaigns`).catch(() => null),
-        fetch(`${API}/api/leads`).catch(() => null),
-        fetch(`${API}/api/drafts`).catch(() => null),
-        fetch(`${API}/api/suppressions`).catch(() => null),
-        fetch(`${API}/api/integrations`).catch(() => null),
-        fetch(`${API}/api/analytics`).catch(() => null),
-        fetch(`${API}/api/agent/activity-feed`).catch(() => null),
-        fetch(`${API}/api/deliverability/daily-pace`).catch(() => null),
+        authFetch(`${API}/api/campaigns`).catch(() => null),
+        authFetch(`${API}/api/leads`).catch(() => null),
+        authFetch(`${API}/api/drafts`).catch(() => null),
+        authFetch(`${API}/api/suppressions`).catch(() => null),
+        authFetch(`${API}/api/integrations`).catch(() => null),
+        authFetch(`${API}/api/analytics`).catch(() => null),
+        authFetch(`${API}/api/agent/activity-feed`).catch(() => null),
+        authFetch(`${API}/api/deliverability/daily-pace`).catch(() => null),
       ]);
 
       if (hRes && hRes.ok) {
@@ -216,7 +225,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       setLoading(true);
       notify('🤖 Running End-to-End Autonomous Pipeline: Discovering leads, sending emails & checking inbox...', 'info');
-      const res = await fetch(`${API}/api/automation/run-cycle`, { method: 'POST' });
+      const res = await authFetch(`${API}/api/automation/run-cycle`, { method: 'POST' });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.detail || 'Autonomous cycle failed');
@@ -241,7 +250,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       setLoading(true);
       notify(`🚀 AutoPilot executing autonomous pipeline for ${unsentLeads.length} companies...`, 'info');
-      const res = await fetch(`${API}/api/leads/batch-auto-dispatch`, {
+      const res = await authFetch(`${API}/api/leads/batch-auto-dispatch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -271,7 +280,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       setLoading(true);
       notify(`⚡ Running AutoPilot for ${companyName}: Auditing, drafting, and dispatching...`, 'info');
-      const res = await fetch(`${API}/api/leads/${leadId}/auto-dispatch`, { method: 'POST' });
+      const res = await authFetch(`${API}/api/leads/${leadId}/auto-dispatch`, { method: 'POST' });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.detail || 'Auto-dispatch failed');
@@ -290,7 +299,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       setLoading(true);
       notify('Initiating live HTTP audit and tech stack inspection...', 'info');
-      const res = await fetch(`${API}/api/leads/${leadId}/audit`, { method: 'POST' });
+      const res = await authFetch(`${API}/api/leads/${leadId}/audit`, { method: 'POST' });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.detail || 'Website audit failed');
@@ -308,7 +317,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       setLoading(true);
       notify('Generating evidence-grounded cold email draft with AI...', 'info');
-      const res = await fetch(`${API}/api/drafts/generate`, {
+      const res = await authFetch(`${API}/api/drafts/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -333,7 +342,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const handleApproveDraft = async (draftId: string, reviewerName: string = 'Ronak Talaviya (Reviewer)', recipientEmail?: string) => {
     try {
       setLoading(true);
-      const res = await fetch(`${API}/api/drafts/${draftId}/approve`, {
+      const res = await authFetch(`${API}/api/drafts/${draftId}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -358,7 +367,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const handleSaveDraftEdit = async (draftId: string, subject: string, bodyText: string) => {
     try {
       setLoading(true);
-      const res = await fetch(`${API}/api/drafts/${draftId}`, {
+      const res = await authFetch(`${API}/api/drafts/${draftId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -382,7 +391,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const handleSendDraft = async (draftId: string) => {
     try {
       setLoading(true);
-      const res = await fetch(`${API}/api/drafts/${draftId}/send`, { method: 'POST' });
+      const res = await authFetch(`${API}/api/drafts/${draftId}/send`, { method: 'POST' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.detail || 'Send failed');
       notify(`Safe outreach successful! ${data.detail || 'Email sent.'}`);
@@ -402,7 +411,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     try {
       setLoading(true);
-      const res = await fetch(`${API}/api/drafts/batch-approve`, {
+      const res = await authFetch(`${API}/api/drafts/batch-approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -431,7 +440,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     try {
       setLoading(true);
-      const res = await fetch(`${API}/api/drafts/${draftId}/reply`, {
+      const res = await authFetch(`${API}/api/drafts/${draftId}/reply`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -455,7 +464,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const handleAddSuppression = async (emailOrDomain: string) => {
     if (!emailOrDomain.trim()) return;
     try {
-      const res = await fetch(`${API}/api/suppressions`, {
+      const res = await authFetch(`${API}/api/suppressions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -477,7 +486,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const handleDeleteSuppression = async (id: string) => {
     try {
-      await fetch(`${API}/api/suppressions/${id}`, { method: 'DELETE' });
+      await authFetch(`${API}/api/suppressions/${id}`, { method: 'DELETE' });
       notify('Suppression removed from blocklist.');
       await fetchData();
     } catch (err: any) {
@@ -485,16 +494,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const handleExportCSV = () => {
-    window.open(`${API}/api/leads/export/csv`, '_blank');
-    notify('Exporting discovered leads to CSV...');
+  const handleExportCSV = async () => {
+    try {
+      notify('Exporting discovered leads to CSV...', 'info');
+      const res = await authFetch(`${API}/api/leads/export/csv`);
+      if (!res.ok) throw new Error('Failed to export leads');
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'leadpilot_leads_export.csv';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      notify('CSV export downloaded successfully!', 'success');
+    } catch (err: any) {
+      notify(err.message, 'error');
+    }
   };
 
   const handleCreateCampaign = async (formData: any): Promise<boolean> => {
     try {
       setLoading(true);
       notify('🤖 Creating campaign & launching Autonomous AI Outbound Pipeline...', 'info');
-      const res = await fetch(`${API}/api/campaigns`, {
+      const res = await authFetch(`${API}/api/campaigns`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
@@ -518,7 +542,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const handleDiscoverLeads = async (formData: any): Promise<boolean> => {
     try {
       setLoading(true);
-      const res = await fetch(`${API}/api/leads/discover`, {
+      const res = await authFetch(`${API}/api/leads/discover`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
@@ -547,7 +571,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       setLoading(true);
       notify(`🤖 Analyzing ${domain} with AI to formulate your Ideal Customer Profile...`, 'info');
-      const res = await fetch(`${API}/api/campaigns/auto-profile`, {
+      const res = await authFetch(`${API}/api/campaigns/auto-profile`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ domain }),
@@ -569,7 +593,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const handleCheckDnsHealth = async (domain = 'ornitech.in') => {
     try {
-      const res = await fetch(`${API}/api/deliverability/dns-health?domain=${encodeURIComponent(domain)}`);
+      const res = await authFetch(`${API}/api/deliverability/dns-health?domain=${encodeURIComponent(domain)}`);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.detail || 'Failed to inspect domain DNS health');
@@ -583,7 +607,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const handleClassifyReply = async (replyText: string, senderName?: string, companyName?: string) => {
     try {
-      const res = await fetch(`${API}/api/replies/classify`, {
+      const res = await authFetch(`${API}/api/replies/classify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -607,7 +631,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       setLoading(true);
       notify(`Drafting Step ${step} follow-up sequence with AI...`, 'info');
-      const res = await fetch(`${API}/api/leads/${leadId}/generate-followup`, {
+      const res = await authFetch(`${API}/api/leads/${leadId}/generate-followup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ step }),

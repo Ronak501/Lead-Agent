@@ -326,11 +326,13 @@ def test_password_authentication_and_hashing(db_session):
     from app.config import settings
 
     original_access_key = settings.ORNITECH_LOGIN_ACCESS_KEY
+    original_admin_pass = settings.ADMIN_PASSWORD
     settings.ORNITECH_LOGIN_ACCESS_KEY = "test-ornitech-access-key"
+    raw_pass = "SecurePass@2026"
+    settings.ADMIN_PASSWORD = raw_pass
 
     try:
         # 1. Verify PBKDF2 hashing & verification
-        raw_pass = "SecurePass@2026"
         hashed = hash_password(raw_pass)
         assert hashed != raw_pass
         assert ":" in hashed
@@ -382,6 +384,7 @@ def test_password_authentication_and_hashing(db_session):
         assert result["user"]["email"] == "ronaktalaviya51@gmail.com"
     finally:
         settings.ORNITECH_LOGIN_ACCESS_KEY = original_access_key
+        settings.ADMIN_PASSWORD = original_admin_pass
 
 
 @pytest.mark.asyncio
@@ -534,3 +537,50 @@ async def test_followup_draft_generation(db_session):
     assert step2.subject == "Re: Idea for Fintech Scale's web presence"
     assert "won't follow up again" in step2.body_text.lower()
     assert step2.status == "pending_review"
+
+
+def test_admin_role_no_substring_grant():
+    """Verify admin role is never granted via substring match on 'founder' or 'admin'."""
+    from app.auth import is_admin_email
+    from app.config import settings
+
+    # Explicit whitelist contains ronaktalaviya51@gmail.com and founder@ornitech.in
+    assert is_admin_email("ronaktalaviya51@gmail.com") is True
+    assert is_admin_email("founder@ornitech.in") is True
+
+    # Malicious substring attempts must be strictly False
+    assert is_admin_email("founder@evil.example") is False
+    assert is_admin_email("admin@evil.example") is False
+    assert is_admin_email("fake-founder@company.com") is False
+    assert is_admin_email("it-admin@random.com") is False
+
+
+def test_csv_formula_injection_sanitization():
+    """Verify spreadsheet formula prefixes (=, +, -, @, tab, CR) are safely escaped."""
+    from app.routes import csv_safe
+
+    assert csv_safe("=1+1") == "'=1+1"
+    assert csv_safe("@SUM(A1:A10)") == "'@SUM(A1:A10)"
+    assert csv_safe("-500") == "'-500"
+    assert csv_safe("+12345") == "'+12345"
+    assert csv_safe("\tcmd|' /C calc'!A0") == "'\tcmd|' /C calc'!A0"
+    assert csv_safe("Normal Company Name") == "Normal Company Name"
+    assert csv_safe("") == ""
+    assert csv_safe(None) == ""
+
+
+def test_reflected_xss_escaped_in_unsubscribe():
+    """Verify HTML special characters in email query are escaped on unsubscribe page."""
+    from app.routes import handle_unsubscribe
+    from unittest.mock import MagicMock
+
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter_by.return_value.first.return_value = None
+
+    malicious_email = "<script>alert(1)</script>@example.com"
+    resp = handle_unsubscribe(email=malicious_email, db=mock_db)
+    body_text = resp.body.decode("utf-8")
+
+    assert "<script>" not in body_text
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;@example.com" in body_text
+

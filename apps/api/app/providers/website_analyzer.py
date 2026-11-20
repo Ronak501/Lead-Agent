@@ -1,6 +1,7 @@
 import ipaddress
 import logging
 import socket
+import ssl
 import time
 from typing import Any
 from urllib.parse import urlparse, urljoin
@@ -93,7 +94,6 @@ class WebsiteAuditProvider:
                 headers={
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 LeadPilotAudit/1.0"
                 },
-                verify=False,
             ) as client:
                 response = await client.get(normalized_url)
                 status_code = response.status_code
@@ -110,8 +110,19 @@ class WebsiteAuditProvider:
                 "opportunity_summary": "Domain server is unreachable or timing out under load.",
                 "performance_score": 15,
             }
-        except httpx.ConnectError as exc:
+        except (httpx.ConnectError, ssl.SSLError) as exc:
             elapsed = time.time() - start_time
+            err_msg = str(exc).lower()
+            if any(term in err_msg for term in ["certificate", "ssl", "tls", "verify", "handshake"]):
+                return {
+                    "status_code": 526,
+                    "title": "Invalid TLS/SSL Certificate",
+                    "meta_description": f"Target server at '{normalized_url}' has an untrusted, expired, or invalid TLS certificate.",
+                    "tech_stack": ["TLS Certificate Issue"],
+                    "issues_found": [f"SSL/TLS Certificate Error: Failed verification on '{normalized_url}' ({str(exc)[:100]})"],
+                    "opportunity_summary": "Domain has broken or untrusted SSL certificate; high risk to visitor security and SEO rankings.",
+                    "performance_score": 10,
+                }
             return {
                 "status_code": 502,
                 "title": "DNS or Connection Failure",
