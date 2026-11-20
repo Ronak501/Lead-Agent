@@ -79,7 +79,7 @@
 * **Backend**: FastAPI (Python 3.11+), SQLAlchemy 2.0, Pydantic v2
 * **Database**: Neon Serverless PostgreSQL (`psycopg` v3 driver with PgBouncer connection pooling)
 * **Hosting**: Google Cloud Run (`asia-south1`)
-* **CI/CD**: GitHub Actions automated pipeline
+* **CI/CD**: GitHub Actions & GitLab CI/CD ([`.gitlab-ci.yml`](.gitlab-ci.yml) & [GitLab Setup Guide](docs/GITLAB_GUIDE.md))
 
 ---
 

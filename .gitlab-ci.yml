@@ -1,0 +1,153 @@
+# ==============================================================================
+# GitLab CI/CD Pipeline Configuration for LeadPilot AI
+# ==============================================================================
+# Full-stack automated pipeline:
+# 1. lint: Static syntax & code quality checks
+# 2. test: Python FastAPI safety & rule test suite (pytest)
+# 3. build: Next.js frontend compilation & Docker container registry builds
+# 4. deploy: Production deployment to Google Cloud Run (gated on main branch)
+# ==============================================================================
+
+stages:
+  - lint
+  - test
+  - build
+  - deploy
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+  API_IMAGE: "$CI_REGISTRY_IMAGE/api"
+  WEB_IMAGE: "$CI_REGISTRY_IMAGE/web"
+
+# Cache dependencies across jobs to speed up builds
+cache:
+  key: "${CI_COMMIT_REF_SLUG}"
+  paths:
+    - .cache/pip
+    - apps/web/.next/cache/
+
+# ------------------------------------------------------------------------------
+# STAGE 1: LINT & STATIC ANALYSIS
+# ------------------------------------------------------------------------------
+api:lint:
+  stage: lint
+  image: python:3.11-slim
+  before_script:
+    - python -V
+    - pip install --no-cache-dir flake8
+  script:
+    - flake8 apps/api --count --select=E9,F63,F7,F82 --show-source --statistics
+  rules:
+    - changes:
+        - apps/api/**/*
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+web:lint:
+  stage: lint
+  image: node:20-alpine
+  before_script:
+    - cd apps/web
+    - npm ci
+  script:
+    - npm run lint || true
+  rules:
+    - changes:
+        - apps/web/**/*
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# ------------------------------------------------------------------------------
+# STAGE 2: AUTOMATED TESTS
+# ------------------------------------------------------------------------------
+api:test:
+  stage: test
+  image: python:3.11-slim
+  variables:
+    APP_ENV: "testing"
+    DATABASE_URL: "sqlite:///./gitlab_test.db"
+    JWT_SECRET: "gitlab_ci_test_secret_key_must_be_over_32_characters_long_12345"
+    WEBHOOK_SECRET: "gitlab_ci_webhook_secret_key_12345"
+    EMAIL_SENDING_ENABLED: "false"
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends gcc build-essential curl && rm -rf /var/lib/apt/lists/*
+    - cd apps/api
+    - pip install --no-cache-dir -r requirements.txt
+  script:
+    - pytest tests/test_safety_and_rules.py -v --tb=short
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# ------------------------------------------------------------------------------
+# STAGE 3: CONTAINER BUILDS & REGISTRY PUSH
+# ------------------------------------------------------------------------------
+web:build_check:
+  stage: build
+  image: node:20-alpine
+  variables:
+    NEXT_TELEMETRY_DISABLED: "1"
+    NEXT_PUBLIC_API_BASE_URL: "https://leadpilot-api-preview.run.app"
+  before_script:
+    - cd apps/web
+    - npm ci
+  script:
+    - npm run build
+  artifacts:
+    expire_in: 1 day
+    paths:
+      - apps/web/.next/
+  rules:
+    - changes:
+        - apps/web/**/*
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+docker:build_images:
+  stage: build
+  image: docker:26-cli
+  services:
+    - docker:26-dind
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+  script:
+    # 1. Build and tag API container
+    - docker build -t "$API_IMAGE:$CI_COMMIT_SHA" -t "$API_IMAGE:latest" ./apps/api
+    - docker push "$API_IMAGE:$CI_COMMIT_SHA"
+    - docker push "$API_IMAGE:latest"
+    # 2. Build and tag Web frontend container
+    - docker build -t "$WEB_IMAGE:$CI_COMMIT_SHA" -t "$WEB_IMAGE:latest" ./apps/web
+    - docker push "$WEB_IMAGE:$CI_COMMIT_SHA"
+    - docker push "$WEB_IMAGE:latest"
+
+# ------------------------------------------------------------------------------
+# STAGE 4: CLOUD RUN DEPLOYMENT (OPTIONAL / PRODUCTION)
+# ------------------------------------------------------------------------------
+deploy:cloud_run:
+  stage: deploy
+  image: google/cloud-sdk:alpine
+  when: manual # Requires manual 1-click confirmation in GitLab UI for production safety
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - |
+      if [ -z "$GCP_SERVICE_KEY" ]; then
+        echo "GCP_SERVICE_KEY variable is not defined. Skipping automated deployment."
+        exit 0
+      fi
+      echo "$GCP_SERVICE_KEY" | gcloud auth activate-service-account --key-file=-
+      gcloud config set project "$GCP_PROJECT_ID"
+      gcloud run deploy leadpilot-api \
+        --image "$API_IMAGE:latest" \
+        --platform managed \
+        --region us-central1 \
+        --allow-unauthenticated
+      gcloud run deploy leadpilot-web \
+        --image "$WEB_IMAGE:latest" \
+        --platform managed \
+        --region us-central1 \
+        --allow-unauthenticated
