@@ -9,7 +9,7 @@ on:
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  REGION: asia-south1
+  REGION: us-central1
   REPOSITORY_NAME: cloud-run-source-deploy
   BACKEND_SERVICE: leadpilot-api
   FRONTEND_SERVICE: leadpilot-web
@@ -73,7 +73,7 @@ jobs:
             SENDER_EMAIL=founder@ornitech.in
             SENDER_NAME=Ornitech Solutions
             APP_ENV=production
-            API_CORS_ORIGINS=https://leadpilot-web-822012759095.asia-south1.run.app,http://localhost:3000
+            API_CORS_ORIGINS=https://leadpilot-web-822012759095.us-central1zzz.run.app,http://localhost:3000
             AUTOPILOT_AUTO_RUN=true
             AUTOPILOT_INTERVAL_MINUTES=15
 
