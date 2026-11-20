@@ -1,0 +1,14 @@
+.gcloudignore
+.git
+.gitignore
+.env
+.env.*
+node_modules/
+.next/
+.cache/
+.venv/
+venv/
+__pycache__/
+*.db
+*.sqlite3
+leadpilot.db
